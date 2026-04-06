@@ -1,9 +1,10 @@
 import { Outlet, NavLink } from 'react-router-dom'
 import {
   Zap, FolderKanban, Users, Building2,
-  LayoutDashboard, Settings, LayoutGrid
+  LayoutDashboard, Settings, LayoutGrid, LogOut
 } from 'lucide-react'
 import clsx from 'clsx'
+import { supabase } from '../lib/supabase'
 
 export default function Layout() {
   const link = ({ isActive }: { isActive: boolean }) =>
@@ -13,6 +14,10 @@ export default function Layout() {
         ? 'bg-brand text-white'
         : 'text-gray-500 hover:bg-gray-100 hover:text-gray-800'
     )
+
+  async function handleLogout() {
+    await supabase.auth.signOut()
+  }
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -40,7 +45,7 @@ export default function Layout() {
         {/* Separador */}
         <div className="my-2 border-t" />
 
-        {/* Portal do revendedor — destaque visual */}
+        {/* Portal do revendedor */}
         <NavLink to="/portal" className={({ isActive }) =>
           clsx(
             'flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors border',
@@ -52,10 +57,15 @@ export default function Layout() {
         </NavLink>
 
         {/* Rodapé */}
-        <div className="mt-auto pt-4 border-t">
+        <div className="mt-auto pt-4 border-t flex flex-col gap-1">
           <NavLink to="/settings" className={link}>
             <Settings size={17} /> Parâmetros
           </NavLink>
+          <button
+            onClick={handleLogout}
+            className="flex items-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-colors text-gray-500 hover:bg-red-50 hover:text-red-500 w-full text-left">
+            <LogOut size={17} /> Sair
+          </button>
         </div>
       </aside>
 
