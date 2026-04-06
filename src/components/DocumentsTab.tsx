@@ -1,7 +1,14 @@
 import { useState } from 'react'
 import { FileText, Download, Send, Eye, AlertCircle, CheckCircle2, X } from 'lucide-react'
 import { buildDocumentData, downloadAsPdf, downloadAsDocx } from '../utils/documentUtils'
-import { REQUEST_TYPE_LABELS } from '../types'
+
+const REQUEST_TYPE_LABELS: Record<string, string> = {
+  CONNECTION_NEW: 'Ligação Nova MT',
+  STANDARD_ADEQUACY: 'Alteração/Adequação de Subestação',
+  DEMAND_CHANGE: 'Aumento de Demanda',
+  OWNERSHIP_TRANSFER: 'Troca de Titularidade MT',
+  SCHEDULED_SHUTDOWN: 'Desligamento Programado',
+}
 
 interface Props {
   project: Record<string, unknown>
@@ -13,8 +20,8 @@ export default function DocumentsTab({ project, client, substationType }: Props)
   const [previewOpen, setPreviewOpen] = useState(false)
   const [signatureSent, setSignatureSent] = useState(false)
 
-  const code     = String(project.requestTypeId ?? '')
-  const typeName = REQUEST_TYPE_LABELS[code as keyof typeof REQUEST_TYPE_LABELS]
+  const code = String(project.requestTypeId ?? '')
+  const typeName = REQUEST_TYPE_LABELS[code]
 
   if (!code || !typeName) {
     return (
@@ -29,20 +36,18 @@ export default function DocumentsTab({ project, client, substationType }: Props)
   }
 
   const docData = buildDocumentData(project, client, substationType)
-  const slug    = `${typeName}-${String(client?.name ?? 'cliente')}`
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
+  const slug = `${typeName}-${String(client?.name ?? 'cliente')}`
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
     .replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase()
 
   const missing: string[] = []
-  if (!client?.name)           missing.push('Nome do cliente')
-  if (!client?.cpfCnpj)        missing.push('CPF / CNPJ')
-  if (!project.ucNumber)       missing.push('Nº da UC')
+  if (!client?.name) missing.push('Nome do cliente')
+  if (!client?.cpfCnpj) missing.push('CPF / CNPJ')
+  if (!project.ucNumber) missing.push('Nº da UC')
   if (!project.concessionaria) missing.push('Concessionária')
 
   return (
     <div className="p-6 space-y-5">
-
-      {/* Cabeçalho */}
       <div className="flex items-center gap-2">
         <FileText size={17} className="text-brand shrink-0" />
         <div>
@@ -53,7 +58,6 @@ export default function DocumentsTab({ project, client, substationType }: Props)
         </div>
       </div>
 
-      {/* Campos incompletos */}
       {missing.length > 0 && (
         <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2.5">
           <AlertCircle size={14} className="text-amber-500 shrink-0 mt-0.5" />
@@ -66,7 +70,6 @@ export default function DocumentsTab({ project, client, substationType }: Props)
         </div>
       )}
 
-      {/* Preview inline */}
       {previewOpen && (
         <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
           <div className="bg-gray-50 border-b px-4 py-2 flex items-center justify-between">
@@ -113,7 +116,6 @@ export default function DocumentsTab({ project, client, substationType }: Props)
         </div>
       )}
 
-      {/* Botões de ação */}
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
         <button
           onClick={() => setPreviewOpen(v => !v)}
@@ -140,7 +142,6 @@ export default function DocumentsTab({ project, client, substationType }: Props)
         </button>
       </div>
 
-      {/* Assinatura digital — stand-by */}
       <div className="border border-dashed border-gray-200 rounded-xl p-4 bg-gray-50/50">
         <div className="flex items-start gap-3">
           <div className="flex-1 min-w-0">

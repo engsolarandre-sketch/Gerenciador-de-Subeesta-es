@@ -1,10 +1,33 @@
-import { REQUEST_TYPE_LABELS, CLIENT_CLASS_LABELS, ENTRY_TYPE_LABELS } from '../types'
+import { STAGE_STATUS_LABELS, STATUS_LABELS } from '../types'
 
 // ── Tipos internos ─────────────────────────────────────────────────────────
 
 export interface DocRow     { label: string; value: string }
 export interface DocSection { heading: string; rows: DocRow[] }
 export interface DocumentData { title: string; sections: DocSection[] }
+
+// ── Labels locais (não exportados do types) ────────────────────────────────
+
+const REQUEST_TYPE_LABELS: Record<string, string> = {
+  CONNECTION_NEW:      'Ligação Nova MT',
+  STANDARD_ADEQUACY:   'Alteração/Adequação de Subestação',
+  DEMAND_CHANGE:       'Aumento de Demanda',
+  OWNERSHIP_TRANSFER:  'Troca de Titularidade MT',
+  SCHEDULED_SHUTDOWN:  'Desligamento Programado',
+}
+
+const CLIENT_CLASS_LABELS: Record<string, string> = {
+  COMMERCIAL:  'Comercial',
+  INDUSTRIAL:  'Industrial',
+  RURAL:       'Rural',
+  RESIDENTIAL: 'Residencial',
+  PUBLIC:      'Poder Público',
+}
+
+const ENTRY_TYPE_LABELS: Record<string, string> = {
+  OVERHEAD:     'Aérea',
+  UNDERGROUND:  'Subterrânea',
+}
 
 // ── Helpers ────────────────────────────────────────────────────────────────
 
@@ -34,7 +57,7 @@ export function buildDocumentData(
   substationType: { name: string } | undefined,
 ): DocumentData {
   const code     = String(project.requestTypeId ?? '')
-  const typeName = REQUEST_TYPE_LABELS[code as keyof typeof REQUEST_TYPE_LABELS] ?? 'Solicitação'
+  const typeName = REQUEST_TYPE_LABELS[code] ?? 'Solicitação'
 
   const clientSection: DocSection = {
     heading: 'Dados do Solicitante / Cliente',

@@ -3,11 +3,9 @@ import { useNavigate } from 'react-router-dom'
 import { useApp } from '../context/AppContext'
 import Button from '../components/Button'
 
-
 export default function NewProjectPage() {
   const { addProject, clients, resellers, substationTypes, requestTypes } = useApp()
   const navigate = useNavigate()
-
 
   const [form, setForm] = useState({
     title: '',
@@ -21,11 +19,9 @@ export default function NewProjectPage() {
     plannedEndDate: '',
   })
 
-
   function set(field: string, value: string) {
     setForm(prev => ({ ...prev, [field]: value }))
   }
-
 
   function getEstimatedEnd(substationTypeId: string, startDate: string): string {
     if (!substationTypeId || !startDate) return ''
@@ -37,26 +33,23 @@ export default function NewProjectPage() {
     return end.toISOString().split('T')[0]
   }
 
-
   function handleTypeChange(value: string) {
     const estimated = getEstimatedEnd(value, form.startDate)
     setForm(prev => ({ ...prev, substationTypeId: value, plannedEndDate: estimated }))
   }
-
 
   function handleStartDateChange(value: string) {
     const estimated = getEstimatedEnd(form.substationTypeId, value)
     setForm(prev => ({ ...prev, startDate: value, plannedEndDate: estimated }))
   }
 
-
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     if (!form.title || !form.substationTypeId || !form.clientId || !form.resellerId) {
       alert('Preencha todos os campos obrigatórios.')
       return
     }
-    const project = addProject({
+    const project = await addProject({
       title: form.title,
       substationTypeId: form.substationTypeId,
       requestTypeId: form.requestTypeId || undefined,
@@ -70,21 +63,17 @@ export default function NewProjectPage() {
     navigate(`/projects/${project.id}`)
   }
 
-
   const label = 'block text-sm font-medium text-gray-700 mb-1'
   const input = 'w-full border rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/40'
-
 
   const selectedType = substationTypes.find(t => t.id === form.substationTypeId)
   const totalDays = selectedType
     ? selectedType.stages.reduce((acc, s) => acc + (s.defaultDurationDays ?? 0), 0)
     : null
 
-
   return (
     <div className="max-w-xl">
       <h1 className="text-xl font-bold text-gray-800 mb-6">Novo Projeto</h1>
-
 
       {substationTypes.length === 0 && (
         <div className="bg-orange-50 border border-orange-200 rounded-xl p-4 mb-5 text-sm text-orange-700">
@@ -93,9 +82,7 @@ export default function NewProjectPage() {
         </div>
       )}
 
-
       <form onSubmit={handleSubmit} className="bg-white rounded-2xl border p-6 flex flex-col gap-4">
-
 
         {/* Título */}
         <div>
@@ -104,7 +91,6 @@ export default function NewProjectPage() {
             onChange={e => set('title', e.target.value)}
             placeholder="Ex: Subestação Empresa XYZ" />
         </div>
-
 
         {/* Tipo de subestação */}
         <div>
@@ -124,7 +110,6 @@ export default function NewProjectPage() {
           )}
         </div>
 
-
         {/* Tipo de Solicitação */}
         <div>
           <label className={label}>Tipo de Solicitação</label>
@@ -143,7 +128,6 @@ export default function NewProjectPage() {
           )}
         </div>
 
-
         {/* kVA */}
         <div>
           <label className={label}>Potência do Transformador (kVA)</label>
@@ -151,7 +135,6 @@ export default function NewProjectPage() {
             onChange={e => set('transformerKva', e.target.value)}
             placeholder="Ex: 300" />
         </div>
-
 
         {/* Concessionária */}
         <div>
@@ -161,7 +144,6 @@ export default function NewProjectPage() {
             <option>CELESC</option>
           </select>
         </div>
-
 
         {/* Datas */}
         <div className="grid grid-cols-2 gap-3">
@@ -180,7 +162,6 @@ export default function NewProjectPage() {
           </div>
         </div>
 
-
         {/* Revendedor */}
         <div>
           <label className={label}>Revendedor *</label>
@@ -196,7 +177,6 @@ export default function NewProjectPage() {
             </p>
           )}
         </div>
-
 
         {/* Cliente */}
         <div>
@@ -215,7 +195,6 @@ export default function NewProjectPage() {
             </p>
           )}
         </div>
-
 
         <div className="flex gap-3 pt-2">
           <Button type="submit">Criar Projeto</Button>

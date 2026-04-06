@@ -71,16 +71,16 @@ export default function ProjectDetailPage() {
     updateProject, deleteProject, advanceStage,
   } = useApp()
 
-  const [activeTab, setActiveTab]     = useState<Tab>('overview')
+  const [activeTab, setActiveTab]         = useState<Tab>('overview')
   const [expandedStage, setExpandedStage] = useState<string | null>(null)
-  const [editOpen, setEditOpen]       = useState(false)
-  const [editForm, setEditForm]       = useState({
+  const [editOpen, setEditOpen]           = useState(false)
+  const [editForm, setEditForm]           = useState({
     title: '', substationTypeId: '', transformerKva: '',
     concessionaria: '', startDate: '', plannedEndDate: '',
   })
 
-  // ── Guard — deve vir APÓS os hooks, ANTES de qualquer uso de project ──
   const project = projects.find(p => p.id === id)
+
   if (!project) {
     return (
       <div className="text-center py-24 text-gray-400">
@@ -95,7 +95,7 @@ export default function ProjectDetailPage() {
     )
   }
 
-  // A partir daqui o TypeScript sabe que project é definido
+  // A partir daqui project é definitivamente definido
   const client         = clients.find(c => c.id === project.clientId)
   const reseller       = resellers.find(r => r.id === project.resellerId)
   const substationType = substationTypes.find(t => t.id === project.substationTypeId)
@@ -110,32 +110,32 @@ export default function ProjectDetailPage() {
 
   function openEdit() {
     setEditForm({
-      title: project.title,
-      substationTypeId: project.substationTypeId,
-      transformerKva: project.transformerKva?.toString() ?? '',
-      concessionaria: project.concessionaria,
-      startDate: toInputDate(project.startDate),
-      plannedEndDate: toInputDate(project.plannedEndDate),
+      title:            project!.title,
+      substationTypeId: project!.substationTypeId,
+      transformerKva:   project!.transformerKva?.toString() ?? '',
+      concessionaria:   project!.concessionaria,
+      startDate:        toInputDate(project!.startDate),
+      plannedEndDate:   toInputDate(project!.plannedEndDate),
     })
     setEditOpen(true)
   }
 
   function handleEditSubmit(e: React.FormEvent) {
     e.preventDefault()
-    updateProject(project.id, {
-      title: editForm.title,
+    updateProject(project!.id, {
+      title:            editForm.title,
       substationTypeId: editForm.substationTypeId || undefined,
-      transformerKva: editForm.transformerKva ? parseFloat(editForm.transformerKva) : undefined,
-      concessionaria: editForm.concessionaria,
-      startDate: editForm.startDate ? new Date(editForm.startDate).toISOString() : undefined,
-      plannedEndDate: editForm.plannedEndDate ? new Date(editForm.plannedEndDate).toISOString() : undefined,
+      transformerKva:   editForm.transformerKva ? parseFloat(editForm.transformerKva) : undefined,
+      concessionaria:   editForm.concessionaria,
+      startDate:        editForm.startDate        ? new Date(editForm.startDate).toISOString()        : undefined,
+      plannedEndDate:   editForm.plannedEndDate   ? new Date(editForm.plannedEndDate).toISOString()   : undefined,
     })
     setEditOpen(false)
   }
 
   function handleDelete() {
-    if (confirm(`Excluir projeto "${project.title}"?`)) {
-      deleteProject(project.id)
+    if (confirm(`Excluir projeto "${project!.title}"?`)) {
+      deleteProject(project!.id)
       navigate('/projects')
     }
   }

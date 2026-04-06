@@ -23,7 +23,7 @@ export default function ResellerDetailPage() {
         <p className="font-medium text-gray-700">Revendedor não encontrado.</p>
         <button
           onClick={() => navigate('/resellers')}
-          className="mt-3 text-sm text-brand underline"
+          className="mt-3 text-sm underline"
           style={{ color: 'var(--color-primary)' }}
         >
           Voltar para a lista
@@ -33,7 +33,7 @@ export default function ResellerDetailPage() {
   }
 
   const resellerProjects = projects.filter(p => p.resellerId === id)
-  const activeProjects = resellerProjects.filter(p => p.status !== 'CANCELLED' && p.status !== 'COMPLETED')
+  const activeProjects    = resellerProjects.filter(p => p.status !== 'CANCELLED' && p.status !== 'COMPLETED')
   const completedProjects = resellerProjects.filter(p => p.status === 'COMPLETED')
 
   const portalUrl = `${window.location.origin}/portal/${reseller.id}`
@@ -46,8 +46,9 @@ export default function ResellerDetailPage() {
   }
 
   function handleDelete() {
-    if (confirm(`Deseja realmente excluir o revendedor "${reseller.name}"?`)) {
-      deleteReseller(reseller.id)
+    const r = reseller!
+    if (confirm(`Deseja realmente excluir o revendedor "${r.name}"?`)) {
+      deleteReseller(r.id)
       navigate('/resellers')
     }
   }
@@ -99,7 +100,6 @@ export default function ResellerDetailPage() {
       {/* Dados do revendedor */}
       <div className="bg-white rounded-2xl border p-5 space-y-3">
         <h2 className="text-sm font-semibold text-gray-500 uppercase tracking-wide">Dados de contato</h2>
-
         {reseller.email && (
           <div className="flex items-center gap-2 text-sm text-gray-700">
             <Mail className="w-4 h-4 text-gray-400 shrink-0" />
@@ -124,9 +124,7 @@ export default function ResellerDetailPage() {
           Compartilhe este link com o revendedor. Ele poderá visualizar apenas os projetos dele.
         </p>
         <div className="flex items-center gap-3 flex-wrap">
-          <code
-            className="flex-1 text-xs bg-gray-50 border rounded-lg px-3 py-2 text-gray-600 truncate"
-          >
+          <code className="flex-1 text-xs bg-gray-50 border rounded-lg px-3 py-2 text-gray-600 truncate">
             {portalUrl}
           </code>
           <button
@@ -134,10 +132,13 @@ export default function ResellerDetailPage() {
             className="flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-medium transition-all shrink-0"
             style={{
               background: copied ? 'var(--color-success-highlight)' : 'var(--color-primary-highlight)',
-              color: copied ? 'var(--color-success)' : 'var(--color-primary)',
+              color:      copied ? 'var(--color-success)'           : 'var(--color-primary)',
             }}
           >
-            {copied ? <><Check className="w-4 h-4" /> Copiado!</> : <><Copy className="w-4 h-4" /> Copiar link</>}
+            {copied
+              ? <><Check className="w-4 h-4" /> Copiado!</>
+              : <><Copy  className="w-4 h-4" /> Copiar link</>
+            }
           </button>
           <button
             onClick={() => window.open(portalUrl, '_blank')}
@@ -167,24 +168,24 @@ export default function ResellerDetailPage() {
         ) : (
           <div>
             {resellerProjects.map(p => {
-              const client = clients.find(c => c.id === p.clientId)
+              const client  = clients.find(c => c.id === p.clientId)
               const subType = substationTypes.find(t => t.id === p.substationTypeId)
               const daysLeft = getDaysLeft(p.plannedEndDate)
               const completedCount = p.stages.filter(s => s.status === 'COMPLETED').length
-              const totalActive = p.stages.filter(s => s.status !== 'SKIPPED').length
+              const totalActive    = p.stages.filter(s => s.status !== 'SKIPPED').length
               const progress = totalActive > 0 ? Math.round((completedCount / totalActive) * 100) : 0
 
               const statusColors: Record<string, string> = {
                 IN_PROGRESS: 'bg-blue-100 text-blue-700',
-                WAITING: 'bg-yellow-100 text-yellow-700',
-                COMPLETED: 'bg-green-100 text-green-700',
-                CANCELLED: 'bg-gray-100 text-gray-500',
+                WAITING:     'bg-yellow-100 text-yellow-700',
+                COMPLETED:   'bg-green-100 text-green-700',
+                CANCELLED:   'bg-gray-100 text-gray-500',
               }
               const statusLabels: Record<string, string> = {
                 IN_PROGRESS: 'Em Andamento',
-                WAITING: 'Aguardando',
-                COMPLETED: 'Concluído',
-                CANCELLED: 'Cancelado',
+                WAITING:     'Aguardando',
+                COMPLETED:   'Concluído',
+                CANCELLED:   'Cancelado',
               }
 
               return (
