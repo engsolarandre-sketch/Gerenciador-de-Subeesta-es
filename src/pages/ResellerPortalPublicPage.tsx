@@ -54,10 +54,7 @@ function AlertDot({ color, label }: { color: 'red' | 'yellow' | 'green'; label: 
 // ─── Card Kanban ──────────────────────────────────────────────────────────────
 
 function ProjectCard({
-  project,
-  client,
-  substationType,
-  phaseColor,
+  project, client, substationType, phaseColor,
 }: {
   project: Project
   client: { name: string } | undefined
@@ -92,20 +89,15 @@ function ProjectCard({
             : `Vence em ${daysLeft}d`}
         </div>
       )}
-
       <p className="font-semibold text-gray-800 text-sm leading-snug">{project.title}</p>
       <p className="text-xs text-gray-400 mt-0.5 truncate">{substationType?.name ?? ''}</p>
       <p className="text-xs text-gray-300 mt-0.5 truncate">{client?.name ?? ''}</p>
-
       <div className="mt-3 pt-3 border-t border-gray-100">
         <p className="text-xs text-gray-500 font-medium mb-0.5">Etapa atual</p>
         <p className="text-xs text-gray-700 leading-snug line-clamp-2">
-          {firstPending
-            ? `${firstPending.stageNumber}. ${firstPending.title}`
-            : 'Todas concluídas'}
+          {firstPending ? `${firstPending.stageNumber}. ${firstPending.title}` : 'Todas concluídas'}
         </p>
       </div>
-
       <div className="mt-3">
         <div className="flex justify-between text-xs mb-1">
           <span className="text-gray-400">{completedCount}/{totalActive} etapas</span>
@@ -138,7 +130,6 @@ export default function ResellerPortalPublicPage() {
 
   const reseller = resellers.find(r => r.id === resellerId)
 
-  // Link inválido
   if (!reseller) {
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center p-6">
@@ -170,19 +161,15 @@ export default function ResellerPortalPublicPage() {
       {/* Topbar */}
       <header className="bg-white border-b px-6 py-4 flex items-center justify-between">
         <div>
-          <p className="text-xs text-gray-400 uppercase tracking-wider font-medium">
-            Portal do Revendedor
-          </p>
-          <h1 className="text-base font-bold text-gray-800 leading-tight">
-            {reseller.name}
-          </h1>
+          <p className="text-xs text-gray-400 uppercase tracking-wider font-medium">Portal do Revendedor</p>
+          <h1 className="text-base font-bold text-gray-800 leading-tight">{reseller.name}</h1>
         </div>
         <div className="text-xs text-gray-400 hidden sm:block">
           {activeProjects.length} projeto{activeProjects.length !== 1 ? 's' : ''} ativo{activeProjects.length !== 1 ? 's' : ''}
         </div>
       </header>
 
-      <main className="p-6 max-w-screen-2xl mx-auto">
+      <main className="p-4 sm:p-6 max-w-screen-2xl mx-auto">
 
         {/* Alertas */}
         {(overdueCount > 0 || warningCount > 0) && (
@@ -206,7 +193,7 @@ export default function ResellerPortalPublicPage() {
           </div>
         )}
 
-        {/* Filtros + toggle de view */}
+        {/* Filtros + toggle */}
         <div className="flex gap-3 mb-6 flex-wrap items-center justify-between">
           <div className="flex gap-3 flex-wrap items-center">
             <select
@@ -219,13 +206,12 @@ export default function ResellerPortalPublicPage() {
                 <option key={s} value={s}>{STATUS_LABELS[s]}</option>
               ))}
             </select>
-            <div className="flex items-center gap-4 ml-1">
+            <div className="flex items-center gap-3 flex-wrap">
               <AlertDot color="red"    label="Vencido" />
               <AlertDot color="yellow" label="Vencendo em breve" />
               <AlertDot color="green"  label="Em dia" />
             </div>
           </div>
-
           <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-1">
             <button
               onClick={() => setView('kanban')}
@@ -255,34 +241,24 @@ export default function ResellerPortalPublicPage() {
           </div>
         )}
 
-        {/* ── Kanban ─────────────────────────────────────────────────────────
-            CORREÇÃO: removido overflow-x-auto e minWidth fixo em px.
-            Usando CSS Grid com 1fr para as colunas sempre dividirem
-            o espaço disponível — a scrollbar nunca aparece desnecessariamente.
-        ────────────────────────────────────────────────────────────────────── */}
+        {/* ── Kanban: scroll horizontal no mobile, largura mínima por coluna ── */}
         {view === 'kanban' && activeProjects.length > 0 && (
-          <div className="pb-4">
+          <div className="pb-4 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
             <div
               style={{
                 display: 'grid',
-                gridTemplateColumns: `repeat(${sortedPhases.length + 1}, 1fr)`,
+                gridTemplateColumns: `repeat(${sortedPhases.length + 1}, minmax(260px, 1fr))`,
                 gap: '1rem',
+                minWidth: `${(sortedPhases.length + 1) * 276}px`,
               }}
             >
               {sortedPhases.map(phase => {
-                const phaseProjects = activeProjects.filter(
-                  p => getProjectMacroPhase(p) === phase.id
-                )
+                const phaseProjects = activeProjects.filter(p => getProjectMacroPhase(p) === phase.id)
                 return (
                   <div key={phase.id}>
                     <div className="flex items-center gap-2 mb-3 px-1">
-                      <div
-                        className="w-3 h-3 rounded-full shrink-0"
-                        style={{ backgroundColor: phase.color }}
-                      />
-                      <h3 className="font-semibold text-gray-700 text-sm truncate">
-                        {phase.name}
-                      </h3>
+                      <div className="w-3 h-3 rounded-full shrink-0" style={{ backgroundColor: phase.color }} />
+                      <h3 className="font-semibold text-gray-700 text-sm truncate">{phase.name}</h3>
                       <span className="ml-auto text-xs font-medium text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full shrink-0">
                         {phaseProjects.length}
                       </span>
@@ -341,98 +317,97 @@ export default function ResellerPortalPublicPage() {
           </div>
         )}
 
-        {/* ── Lista ── */}
+        {/* ── Lista: scroll horizontal no mobile, largura mínima garantida ── */}
         {view === 'list' && activeProjects.length > 0 && (
           <div className="bg-white rounded-2xl border overflow-hidden">
-            <div className="grid grid-cols-12 gap-2 px-5 py-3 bg-gray-50 border-b text-xs font-semibold text-gray-400 uppercase tracking-wider">
-              <div className="col-span-1" />
-              <div className="col-span-3">Projeto</div>
-              <div className="col-span-2">Cliente</div>
-              <div className="col-span-2">Fase Atual</div>
-              <div className="col-span-2">Etapa Atual</div>
-              <div className="col-span-1 text-center">Prazo</div>
-              <div className="col-span-1 text-center">Progresso</div>
-            </div>
+            <div className="overflow-x-auto">
+              <div className="min-w-[640px]">
+                <div className="grid grid-cols-12 gap-2 px-5 py-3 bg-gray-50 border-b text-xs font-semibold text-gray-400 uppercase tracking-wider">
+                  <div className="col-span-1" />
+                  <div className="col-span-3">Projeto</div>
+                  <div className="col-span-2">Cliente</div>
+                  <div className="col-span-2">Fase Atual</div>
+                  <div className="col-span-2">Etapa Atual</div>
+                  <div className="col-span-1 text-center">Prazo</div>
+                  <div className="col-span-1 text-center">Progresso</div>
+                </div>
 
-            {[...activeProjects]
-              .sort((a, b) => {
-                const order = { overdue: 0, warning: 1, ok: 2, none: 3 }
-                return order[getProjectAlert(a)] - order[getProjectAlert(b)]
-              })
-              .map(p => {
-                const client       = clients.find(c => c.id === p.clientId)
-                const substationType = substationTypes.find(t => t.id === p.substationTypeId)
-                const macroPhaseId = getProjectMacroPhase(p)
-                const phase        = macroPhases.find(m => m.id === macroPhaseId)
-                const activeStages = p.stages
-                  .filter(s => s.status !== 'SKIPPED')
-                  .sort((a, b) => a.stageNumber - b.stageNumber)
-                const firstPending  = activeStages.find(s => s.status !== 'COMPLETED')
-                const alert         = getProjectAlert(p)
-                const daysLeft      = getDaysLeft(p.plannedEndDate)
-                const completedCount = p.stages.filter(s => s.status === 'COMPLETED').length
-                const totalActive    = p.stages.filter(s => s.status !== 'SKIPPED').length
-                const progress       = totalActive > 0 ? Math.round((completedCount / totalActive) * 100) : 0
+                {[...activeProjects]
+                  .sort((a, b) => {
+                    const order = { overdue: 0, warning: 1, ok: 2, none: 3 }
+                    return order[getProjectAlert(a)] - order[getProjectAlert(b)]
+                  })
+                  .map(p => {
+                    const client         = clients.find(c => c.id === p.clientId)
+                    const substationType = substationTypes.find(t => t.id === p.substationTypeId)
+                    const macroPhaseId   = getProjectMacroPhase(p)
+                    const phase          = macroPhases.find(m => m.id === macroPhaseId)
+                    const activeStages   = p.stages
+                      .filter(s => s.status !== 'SKIPPED')
+                      .sort((a, b) => a.stageNumber - b.stageNumber)
+                    const firstPending   = activeStages.find(s => s.status !== 'COMPLETED')
+                    const alert          = getProjectAlert(p)
+                    const daysLeft       = getDaysLeft(p.plannedEndDate)
+                    const completedCount = p.stages.filter(s => s.status === 'COMPLETED').length
+                    const totalActive    = p.stages.filter(s => s.status !== 'SKIPPED').length
+                    const progress       = totalActive > 0 ? Math.round((completedCount / totalActive) * 100) : 0
 
-                return (
-                  <div
-                    key={p.id}
-                    className="grid grid-cols-12 gap-2 px-5 py-3 items-center border-t hover:bg-gray-50 transition-colors"
-                  >
-                    <div className="col-span-1 flex justify-center">
-                      <AlertIndicator level={alert} />
-                    </div>
-                    <div className="col-span-3 min-w-0">
-                      <p className="font-semibold text-gray-800 truncate text-sm">{p.title}</p>
-                      <p className="text-xs text-gray-400 truncate">{substationType?.name ?? ''}</p>
-                    </div>
-                    <div className="col-span-2 min-w-0">
-                      <p className="text-sm text-gray-700 truncate">{client?.name ?? ''}</p>
-                    </div>
-                    <div className="col-span-2">
-                      {phase ? (
-                        <span
-                          className="inline-flex items-center text-xs font-medium px-2 py-1 rounded-full text-white"
-                          style={{ backgroundColor: phase.color }}
-                        >
-                          {phase.name}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-300">—</span>
-                      )}
-                    </div>
-                    <div className="col-span-2 min-w-0">
-                      <p className="text-xs text-gray-600 truncate">
-                        {firstPending
-                          ? `${firstPending.stageNumber}. ${firstPending.title}`
-                          : ''}
-                      </p>
-                    </div>
-                    <div className="col-span-1 text-center">
-                      {daysLeft !== null ? (
-                        <span className={clsx('text-xs font-semibold',
-                          daysLeft < 0 ? 'text-red-500' : daysLeft <= 15 ? 'text-yellow-500' : 'text-green-600'
-                        )}>
-                          {daysLeft < 0 ? `${Math.abs(daysLeft)}d atr.` : `${daysLeft}d`}
-                        </span>
-                      ) : (
-                        <span className="text-xs text-gray-300">—</span>
-                      )}
-                    </div>
-                    <div className="col-span-1">
-                      <div className="flex items-center gap-1.5">
-                        <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
-                          <div
-                            className="h-full bg-brand rounded-full"
-                            style={{ width: `${progress}%` }}
-                          />
+                    return (
+                      <div
+                        key={p.id}
+                        className="grid grid-cols-12 gap-2 px-5 py-3 items-center border-t hover:bg-gray-50 transition-colors"
+                      >
+                        <div className="col-span-1 flex justify-center">
+                          <AlertIndicator level={alert} />
                         </div>
-                        <span className="text-xs text-gray-400 shrink-0">{progress}%</span>
+                        <div className="col-span-3 min-w-0">
+                          <p className="font-semibold text-gray-800 truncate text-sm">{p.title}</p>
+                          <p className="text-xs text-gray-400 truncate">{substationType?.name ?? ''}</p>
+                        </div>
+                        <div className="col-span-2 min-w-0">
+                          <p className="text-sm text-gray-700 truncate">{client?.name ?? ''}</p>
+                        </div>
+                        <div className="col-span-2">
+                          {phase ? (
+                            <span
+                              className="inline-flex items-center text-xs font-medium px-2 py-1 rounded-full text-white"
+                              style={{ backgroundColor: phase.color }}
+                            >
+                              {phase.name}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-300">—</span>
+                          )}
+                        </div>
+                        <div className="col-span-2 min-w-0">
+                          <p className="text-xs text-gray-600 truncate">
+                            {firstPending ? `${firstPending.stageNumber}. ${firstPending.title}` : ''}
+                          </p>
+                        </div>
+                        <div className="col-span-1 text-center">
+                          {daysLeft !== null ? (
+                            <span className={clsx('text-xs font-semibold',
+                              daysLeft < 0 ? 'text-red-500' : daysLeft <= 15 ? 'text-yellow-500' : 'text-green-600'
+                            )}>
+                              {daysLeft < 0 ? `${Math.abs(daysLeft)}d atr.` : `${daysLeft}d`}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-gray-300">—</span>
+                          )}
+                        </div>
+                        <div className="col-span-1">
+                          <div className="flex items-center gap-1.5">
+                            <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                              <div className="h-full bg-brand rounded-full" style={{ width: `${progress}%` }} />
+                            </div>
+                            <span className="text-xs text-gray-400 shrink-0">{progress}%</span>
+                          </div>
+                        </div>
                       </div>
-                    </div>
-                  </div>
-                )
-              })}
+                    )
+                  })}
+              </div>
+            </div>
           </div>
         )}
 
