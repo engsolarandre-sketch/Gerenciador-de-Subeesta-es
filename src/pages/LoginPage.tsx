@@ -33,7 +33,7 @@ export default function LoginPage() {
             Gerenciador de Subestações
           </h1>
           <p className="text-sm mt-1" style={{ color: 'var(--color-text-muted)' }}>
-            Acesse sua conta para continuarjjjjjj
+            Acesse sua conta para continuar
           </p>
         </div>
 
