@@ -77,23 +77,23 @@ export default function ResellerFormPage() {
     setLoadingCnpj(true)
     setCnpjMsg('')
     try {
-      const res = await fetch(`https://receitaws.com.br/v1/cnpj/${cnpj}`)
-      const data = await res.json()
-      if (data.status === 'ERROR') { setCnpjMsg('CNPJ não encontrado.'); return }
-      setForm(p => ({
-        ...p,
-        razaoSocial: data.nome ?? p.razaoSocial,
-        nomeFantasia: data.fantasia ?? p.nomeFantasia,
-        telefone: p.telefone || maskPhone(data.telefone ?? ''),
-        email: p.email || (data.email ?? ''),
-        cep: p.cep || maskCep(data.cep ?? ''),
-        logradouro: p.logradouro || (data.logradouro ?? ''),
-        numero: p.numero || (data.numero ?? ''),
-        complemento: p.complemento || (data.complemento ?? ''),
-        bairro: p.bairro || (data.bairro ?? ''),
-        cidade: p.cidade || (data.municipio ?? ''),
-        estado: p.estado || (data.uf ?? ''),
-      }))
+      const res = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`)
+if (!res.ok) { setCnpjMsg('CNPJ não encontrado.'); return }
+const data = await res.json()
+setForm(p => ({
+  ...p,
+  razaoSocial: data.razao_social ?? p.razaoSocial,
+  nomeFantasia: data.nome_fantasia ?? p.nomeFantasia,
+  telefone: p.telefone || maskPhone(data.ddd_telefone_1 ?? ''),
+  email: p.email || (data.email ?? ''),
+  cep: p.cep || maskCep(data.cep ?? ''),
+  logradouro: p.logradouro || (data.logradouro ?? ''),
+  numero: p.numero || (data.numero ?? ''),
+  complemento: p.complemento || (data.complemento ?? ''),
+  bairro: p.bairro || (data.bairro ?? ''),
+  cidade: p.cidade || (data.municipio ?? ''),
+  estado: p.estado || (data.uf ?? ''),
+}))
       setCnpjMsg('✓ Dados preenchidos com sucesso!')
     } catch {
       setCnpjMsg('Erro ao consultar CNPJ. Tente novamente.')
