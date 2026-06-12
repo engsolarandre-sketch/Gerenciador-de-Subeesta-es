@@ -48,7 +48,7 @@ function getProjectMacroPhase(project: Project): string | null {
 export default function ResellerPortalPage() {
   const { projects, clients, substationTypes, macroPhases, resellers, requestTypes } = useApp()
   const navigate = useNavigate()
-  const [view, setView] = useState<'kanban' | 'list'>('kanban')
+  const [view, setView] = useState<'phase' | 'list'>('phase')
   const [filterReseller, setFilterReseller] = useState('')
   const [filterStatus, setFilterStatus] = useState<ProjectStatus | ''>('')
   const [filterRequestType, setFilterRequestType] = useState('')
@@ -78,10 +78,10 @@ export default function ResellerPortalPage() {
           </p>
         </div>
         <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-1">
-          <button onClick={() => setView('kanban')}
+          <button onClick={() => setView('phase')}
             className={clsx('flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
-              view === 'kanban' ? 'bg-white text-brand shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
-            <LayoutGrid size={15} /> Kanban
+              view === 'phase' ? 'bg-white text-brand shadow-sm' : 'text-gray-500 hover:text-gray-700')}>
+            <LayoutGrid size={15} /> Fases
           </button>
           <button onClick={() => setView('list')}
             className={clsx('flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
@@ -153,8 +153,8 @@ export default function ResellerPortalPage() {
       )}
 
 
-      {/* ── Kanban ──────────────────────────────────────────────────────── */}
-      {view === 'kanban' && activeProjects.length > 0 && (
+      {/* ── Fases ──────────────────────────────────────────────────────── */}
+      {view === 'phase' && activeProjects.length > 0 && (
         <div className="overflow-x-auto pb-4">
           <div className="flex gap-4" style={{ minWidth: `${(sortedPhases.length + 1) * 272}px` }}>
             {sortedPhases.map(phase => {
@@ -328,7 +328,7 @@ export default function ResellerPortalPage() {
 }
 
 
-// ── Card do Kanban ─────────────────────────────────────────────────────────
+// ── Card por fase ─────────────────────────────────────────────────────────
 function ProjectCard({ project, client, substationType, requestTypeName, phaseColor, onClick }: {
   project: Project
   client: { name: string } | undefined

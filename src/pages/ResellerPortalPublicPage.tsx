@@ -51,7 +51,7 @@ function AlertDot({ color, label }: { color: 'red' | 'yellow' | 'green'; label: 
   )
 }
 
-// ─── Card Kanban ──────────────────────────────────────────────────────────────
+// ─── Card por fase ──────────────────────────────────────────────────────────────
 
 function ProjectCard({
   project, client, substationType, phaseColor,
@@ -125,7 +125,7 @@ function ProjectCard({
 export default function ResellerPortalPublicPage() {
   const { resellerId } = useParams<{ resellerId: string }>()
   const { projects, clients, substationTypes, macroPhases, resellers } = useApp()
-  const [view, setView] = useState<'kanban' | 'list'>('kanban')
+  const [view, setView] = useState<'phase' | 'list'>('phase')
   const [filterStatus, setFilterStatus] = useState<ProjectStatus | ''>('')
 
   const reseller = resellers.find(r => r.id === resellerId)
@@ -214,14 +214,14 @@ export default function ResellerPortalPublicPage() {
           </div>
           <div className="flex items-center bg-gray-100 rounded-lg p-1 gap-1">
             <button
-              onClick={() => setView('kanban')}
+              onClick={() => setView('phase')}
               className={clsx(
                 'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-sm font-medium transition-colors',
-                view === 'kanban' ? 'bg-white text-brand shadow-sm' : 'text-gray-500 hover:text-gray-700'
+                view === 'phase' ? 'bg-white text-brand shadow-sm' : 'text-gray-500 hover:text-gray-700'
               )}
             >
-              <LayoutGrid size={15} /> Kanban
-            </button>
+              <LayoutGrid size={15} /> Fases
+          </button>
             <button
               onClick={() => setView('list')}
               className={clsx(
@@ -241,8 +241,8 @@ export default function ResellerPortalPublicPage() {
           </div>
         )}
 
-        {/* ── Kanban: scroll horizontal no mobile, largura mínima por coluna ── */}
-        {view === 'kanban' && activeProjects.length > 0 && (
+        {/* ── Fases: scroll horizontal no mobile, largura mínima por coluna ── */}
+        {view === 'phase' && activeProjects.length > 0 && (
           <div className="pb-4 overflow-x-auto -mx-4 px-4 sm:mx-0 sm:px-0">
             <div
               style={{
