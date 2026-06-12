@@ -1,7 +1,11 @@
 // src/lib/supabase.ts
 import { createClient } from '@supabase/supabase-js'
 
-const SUPABASE_URL  = 'https://zfrzdpiclktgztwdnkxe.supabase.co'
-const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InpmcnpkcGljbGt0Z3p0d2Rua3hlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzU0ODUxMjAsImV4cCI6MjA5MTA2MTEyMH0.98rWncpm9SIAoFS2uHhuMbyvx1clRilKhovW1HKTUJE'
+const SUPABASE_URL = import.meta.env.VITE_SUPABASE_URL
+const SUPABASE_ANON_KEY = import.meta.env.VITE_SUPABASE_ANON_KEY
 
-export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON)
+if (!SUPABASE_URL || !SUPABASE_ANON_KEY) {
+  throw new Error('Configure VITE_SUPABASE_URL e VITE_SUPABASE_ANON_KEY no ambiente do Vite/Vercel.')
+}
+
+export const supabase = createClient(SUPABASE_URL, SUPABASE_ANON_KEY)

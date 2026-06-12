@@ -1,6 +1,7 @@
 import { useState } from 'react'
 import { FileText, Download, Send, Eye, AlertCircle, CheckCircle2, X } from 'lucide-react'
 import { buildDocumentData, downloadAsPdf, downloadAsDocx } from '../utils/documentUtils'
+import type { Client, Project } from '../types'
 
 const REQUEST_TYPE_LABELS: Record<string, string> = {
   CONNECTION_NEW: 'Ligação Nova MT',
@@ -11,17 +12,19 @@ const REQUEST_TYPE_LABELS: Record<string, string> = {
 }
 
 interface Props {
-  project: Record<string, unknown>
-  client: Record<string, unknown> | undefined
+  project: Project
+  client: Client | undefined
   substationType: { name: string } | undefined
+  requestTypes: { id: string; name: string }[]
 }
 
-export default function DocumentsTab({ project, client, substationType }: Props) {
+export default function DocumentsTab({ project, client, substationType, requestTypes }: Props) {
   const [previewOpen, setPreviewOpen] = useState(false)
   const [signatureSent, setSignatureSent] = useState(false)
 
   const code = String(project.requestTypeId ?? '')
-  const typeName = REQUEST_TYPE_LABELS[code]
+  const configuredTypeName = requestTypes.find(rt => rt.id === code)?.name
+  const typeName = configuredTypeName ?? REQUEST_TYPE_LABELS[code]
 
   if (!code || !typeName) {
     return (
@@ -35,15 +38,15 @@ export default function DocumentsTab({ project, client, substationType }: Props)
     )
   }
 
-  const docData = buildDocumentData(project, client, substationType)
+  const docData = buildDocumentData({ ...project, requestTypeName: typeName } as Record<string, unknown>, client as Record<string, unknown> | undefined, substationType)
   const slug = `${typeName}-${String(client?.name ?? 'cliente')}`
-    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase()
 
   const missing: string[] = []
   if (!client?.name) missing.push('Nome do cliente')
   if (!client?.cpfCnpj) missing.push('CPF / CNPJ')
-  if (!project.ucNumber) missing.push('Nº da UC')
+  if (!client?.numeroUC) missing.push('Nº da UC')
   if (!project.concessionaria) missing.push('Concessionária')
 
   return (

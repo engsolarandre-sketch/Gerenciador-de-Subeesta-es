@@ -513,21 +513,46 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   async function updateProject(id: string, data: Partial<Pick<Project,
     'title' | 'substationTypeId' | 'transformerKva' | 'concessionaria' |
     'startDate' | 'plannedEndDate' | 'actualEndDate' | 'requestTypeId'>>) {
-    await supabase.from('projects').update({
+    const now = new Date().toISOString()
+    const existing = projects.find(p => p.id === id)
+    const nextType = data.substationTypeId
+      ? substationTypes.find(t => t.id === data.substationTypeId)
+      : undefined
+    const regeneratedStages = existing && nextType && data.substationTypeId !== existing.substationTypeId
+      ? buildStagesFromConfig(nextType, data.startDate ?? existing.startDate)
+      : null
+
+    const projectUpdate: any = {
       title: data.title, substation_type_id: data.substationTypeId,
       request_type_id: data.requestTypeId ?? null,
       transformer_kva: data.transformerKva ?? null, concessionaria: data.concessionaria,
       start_date: data.startDate, planned_end_date: data.plannedEndDate ?? null,
-      actual_end_date: data.actualEndDate ?? null, updated_at: new Date().toISOString(),
-    }).eq('id', id)
+      actual_end_date: data.actualEndDate ?? null, updated_at: now,
+    }
+    if (regeneratedStages) projectUpdate.current_stage = 1
+
+    await supabase.from('projects').update(projectUpdate).eq('id', id)
+
+    if (regeneratedStages) {
+      await supabase.from('stages').delete().eq('project_id', id)
+      await supabase.from('stages').insert(regeneratedStages.map(s => ({
+        id: s.id, project_id: id, template_stage_id: s.templateStageId ?? null,
+        stage_number: s.stageNumber, title: s.title, status: s.status,
+        macro_phase_id: s.macroPhaseId ?? null,
+        planned_start_date: s.plannedStartDate ?? null,
+        planned_end_date: s.plannedEndDate ?? null,
+      })))
+    }
+
     setProjects(prev => prev.map(p => {
       if (p.id !== id) return p
-      const updated = { ...p, ...data, updatedAt: new Date().toISOString() }
-      if (data.substationTypeId) {
-        const config = substationTypes.find(t => t.id === data.substationTypeId)
-        if (config) { updated.stages = buildStagesFromConfig(config, p.startDate); updated.currentStage = 1 }
+      return {
+        ...p,
+        ...data,
+        stages: regeneratedStages ?? p.stages,
+        currentStage: regeneratedStages ? 1 : p.currentStage,
+        updatedAt: now,
       }
-      return updated
     }))
   }
   async function deleteProject(id: string) {

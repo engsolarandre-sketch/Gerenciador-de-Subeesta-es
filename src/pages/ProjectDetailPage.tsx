@@ -9,6 +9,7 @@ import { useApp } from '../context/AppContext'
 import Badge from '../components/Badge'
 import Button from '../components/Button'
 import Modal from '../components/Modal'
+import DocumentsTab from '../components/DocumentsTab'
 import {
   STATUS_LABELS, STAGE_STATUS_LABELS,
   type ProjectStatus, type StageStatus,
@@ -66,7 +67,7 @@ export default function ProjectDetailPage() {
   const { id } = useParams()
   const navigate = useNavigate()
   const {
-    projects, clients, resellers, substationTypes,
+    projects, clients, resellers, substationTypes, requestTypes,
     updateProjectStage, updateProjectStatus,
     updateProject, deleteProject, advanceStage,
   } = useApp()
@@ -541,15 +542,7 @@ export default function ProjectDetailPage() {
 
         {/* ── Documentos ──────────────────────────────────────────────── */}
         {activeTab === 'documents' && (
-          <div className="p-6">
-            <div className="text-center py-12 text-gray-400">
-              <FileText size={32} className="mx-auto mb-3 opacity-30" />
-              <p className="text-sm font-medium">Geração de documentos em breve</p>
-              <p className="text-xs mt-1">
-                Aqui serão gerados os formulários da Celesc preenchidos automaticamente com os dados do projeto.
-              </p>
-            </div>
-          </div>
+          <DocumentsTab project={project} client={client} substationType={substationType} requestTypes={requestTypes} />
         )}
 
         {/* ── Histórico ───────────────────────────────────────────────── */}

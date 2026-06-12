@@ -57,16 +57,16 @@ export function buildDocumentData(
   substationType: { name: string } | undefined,
 ): DocumentData {
   const code     = String(project.requestTypeId ?? '')
-  const typeName = REQUEST_TYPE_LABELS[code] ?? 'Solicitação'
+  const typeName = String(project.requestTypeName ?? REQUEST_TYPE_LABELS[code] ?? 'Solicitação')
 
   const clientSection: DocSection = {
     heading: 'Dados do Solicitante / Cliente',
     rows: [
       { label: 'Nome / Razão Social', value: fmt(client?.name) },
       { label: 'CPF / CNPJ',          value: fmt(client?.cpfCnpj) },
-      { label: 'Endereço',             value: fmt(client?.street ? `${client.street}, ${client.streetNumber ?? 's/n'}` : undefined) },
-      { label: 'Bairro',               value: fmt(client?.neighborhood) },
-      { label: 'CEP',                  value: fmt(client?.zipCode) },
+      { label: 'Endereço',             value: fmt(client?.logradouro ? `${client.logradouro}, ${client.numero ?? 's/n'}` : client?.address) },
+      { label: 'Bairro',               value: fmt(client?.bairro) },
+      { label: 'CEP',                  value: fmt(client?.cep) },
       { label: 'Município / UF',       value: client?.city ? `${client.city} / ${client.state}` : BLANK },
       { label: 'Telefone',             value: fmt(client?.phone) },
       { label: 'E-mail',               value: fmt(client?.email) },
@@ -79,7 +79,7 @@ export function buildDocumentData(
       { label: 'Tipo de Subestação',  value: fmt(substationType?.name) },
       { label: 'Tipo de Solicitação', value: typeName },
       { label: 'Concessionária',      value: fmt(project.concessionaria) },
-      { label: 'Nº da UC',            value: fmt(project.ucNumber) },
+      { label: 'Nº da UC',            value: fmt(client?.numeroUC) },
       { label: 'Potência Trafo',      value: project.transformerKva ? `${project.transformerKva} kVA` : BLANK },
     ],
   }
