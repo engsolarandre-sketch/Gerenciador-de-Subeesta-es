@@ -72,7 +72,7 @@ export default function ResellerPortalPage() {
       {/* ── Cabeçalho ──────────────────────────────────────────────────── */}
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-gray-800">Portal do Revendedor</h1>
+          <h1 className="text-xl font-bold text-gray-800">Portal de projetos</h1>
           <p className="text-sm text-gray-400 mt-0.5">
             Acompanhe o andamento dos projetos em tempo real.
           </p>
@@ -345,72 +345,74 @@ function ProjectCard({ project, client, substationType, requestTypeName, phaseCo
   const totalActive    = project.stages.filter(s => s.status !== 'SKIPPED').length
   const progress       = totalActive > 0 ? Math.round((completedCount / totalActive) * 100) : 0
 
-  const cardBorder =
-    alert === 'overdue' ? 'border-red-300 bg-red-50/40' :
-    alert === 'warning' ? 'border-yellow-300 bg-yellow-50/40' :
-    'border-gray-200 bg-white'
+  const alertTone =
+    alert === 'overdue' ? 'border-red-200 bg-red-50 text-red-700' :
+    alert === 'warning' ? 'border-amber-200 bg-amber-50 text-amber-700' :
+    'border-emerald-200 bg-emerald-50 text-emerald-700'
 
   return (
-    <div onClick={onClick}
-      className={clsx('rounded-xl border p-4 cursor-pointer hover:shadow-md transition-all', cardBorder)}>
+    <button
+      type="button"
+      onClick={onClick}
+      className="group relative w-full overflow-hidden rounded-lg border border-slate-200 bg-white p-4 text-left shadow-sm transition-all hover:-translate-y-0.5 hover:border-slate-300 hover:shadow-md"
+    >
+      <div className="absolute inset-x-0 top-0 h-1" style={{ backgroundColor: phaseColor }} />
 
-      {/* Alerta de prazo */}
-      {(alert === 'overdue' || alert === 'warning') && (
-        <div className={clsx(
-          'flex items-center gap-1.5 text-xs font-medium mb-2 pb-2 border-b',
-          alert === 'overdue' ? 'text-red-600 border-red-200' : 'text-yellow-600 border-yellow-200'
-        )}>
-          <AlertTriangle size={12} />
-          {alert === 'overdue'
-            ? `Projeto vencido há ${Math.abs(daysLeft ?? 0)}d`
-            : `Vence em ${daysLeft}d`}
+      <div className="mb-3 flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="line-clamp-2 text-sm font-bold leading-snug text-slate-950">
+            {project.title}
+          </p>
+          <p className="mt-1 truncate text-xs font-medium text-slate-500">
+            {substationType?.name ?? 'Sem tipo definido'}
+          </p>
         </div>
-      )}
-
-      {/* Título */}
-      <p className="font-semibold text-gray-800 text-sm leading-snug">{project.title}</p>
-      <p className="text-xs text-gray-400 mt-0.5 truncate">{substationType?.name ?? '—'}</p>
-      <p className="text-xs text-gray-300 mt-0.5 truncate">{client?.name ?? '—'}</p>
-
-      {/* Tipo de Solicitação */}
-      {requestTypeName && (
-        <span className="inline-flex items-center mt-2 text-xs font-medium px-2 py-0.5 rounded-full bg-gray-100 text-gray-500">
-          {requestTypeName}
+        <span className="shrink-0 rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">
+          {progress}%
         </span>
-      )}
+      </div>
 
-      {/* Etapa atual */}
-      <div className="mt-3 pt-3 border-t border-gray-100">
-        <p className="text-xs text-gray-500 font-medium mb-0.5">Etapa atual</p>
-        <p className="text-xs text-gray-700 leading-snug line-clamp-2">
+      <div className="space-y-2">
+        <div className="flex items-center gap-2 text-xs text-slate-500">
+          <span className="h-2 w-2 rounded-full" style={{ backgroundColor: phaseColor }} />
+          <span className="truncate">{client?.name ?? 'Cliente não informado'}</span>
+        </div>
+
+        {requestTypeName && (
+          <span className="inline-flex max-w-full items-center rounded-full bg-slate-100 px-2.5 py-1 text-xs font-semibold text-slate-600">
+            <span className="truncate">{requestTypeName}</span>
+          </span>
+        )}
+      </div>
+
+      <div className="mt-4 rounded-lg border border-slate-100 bg-slate-50 p-3">
+        <p className="text-[11px] font-semibold uppercase tracking-wide text-slate-400">Etapa atual</p>
+        <p className="mt-1 line-clamp-2 text-xs font-medium leading-relaxed text-slate-700">
           {firstPending
             ? `${firstPending.stageNumber}. ${firstPending.title}`
-            : '✓ Todas concluídas'}
+            : 'Todas concluídas'}
         </p>
       </div>
 
-      {/* Progresso */}
-      <div className="mt-3">
-        <div className="flex justify-between text-xs mb-1">
-          <span className="text-gray-400">{completedCount}/{totalActive} etapas</span>
+      <div className="mt-4">
+        <div className="mb-1.5 flex items-center justify-between text-xs">
+          <span className="font-medium text-slate-500">{completedCount}/{totalActive} etapas</span>
           {daysLeft !== null && (
-            <span className={clsx('font-medium',
-              daysLeft < 0 ? 'text-red-500' :
-              daysLeft <= 15 ? 'text-yellow-500' :
-              'text-green-600')}>
-              {daysLeft < 0 ? `${Math.abs(daysLeft)}d atrasado` : `${daysLeft}d restantes`}
+            <span className={clsx('rounded-full border px-2 py-0.5 text-[11px] font-bold', alertTone)}>
+              {daysLeft < 0 ? `${Math.abs(daysLeft)}d atraso` : `${daysLeft}d restantes`}
             </span>
           )}
         </div>
-        <div className="h-1.5 bg-gray-100 rounded-full overflow-hidden">
-          <div className="h-full rounded-full transition-all"
-            style={{ width: `${progress}%`, backgroundColor: phaseColor }} />
+        <div className="h-2 overflow-hidden rounded-full bg-slate-100">
+          <div
+            className="h-full rounded-full transition-all"
+            style={{ width: `${progress}%`, backgroundColor: phaseColor }}
+          />
         </div>
       </div>
-    </div>
+    </button>
   )
 }
-
 
 // ── Subcomponentes ─────────────────────────────────────────────────────────
 function AlertIndicator({ level }: { level: AlertLevel }) {

@@ -47,7 +47,7 @@ export default function Layout() {
               <Building2 size={18} /> Revendedores
             </NavLink>
             <NavLink to="/portal" className={link}>
-              <LayoutGrid size={18} /> Portal Revendedor
+              <LayoutGrid size={18} /> Portal de projetos
             </NavLink>
           </nav>
 

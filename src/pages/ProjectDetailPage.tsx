@@ -145,7 +145,7 @@ export default function ProjectDetailPage() {
   const lbl = 'block text-sm font-medium text-gray-700 mb-1'
 
   return (
-    <div className="max-w-5xl">
+    <div className="mx-auto max-w-7xl">
 
       {/* ── Cabeçalho ──────────────────────────────────────────────────── */}
       <div className="flex items-start gap-3 mb-6">
@@ -178,7 +178,7 @@ export default function ProjectDetailPage() {
       </div>
 
       {/* ── Cards de datas macro ───────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 mb-6">
         <MacroCard label="Início" value={formatDate(project.startDate)} icon={<Calendar size={15} />} />
         <MacroCard
           label="Prazo de Entrega"
@@ -289,7 +289,7 @@ export default function ProjectDetailPage() {
         {/* ── Visão Geral ─────────────────────────────────────────────── */}
         {activeTab === 'overview' && (
           <div className="p-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            <div className="grid grid-cols-1 lg:grid-cols-2 xl:grid-cols-4 gap-6">
               <div>
                 <h3 className="text-xs text-gray-400 uppercase tracking-wider font-semibold mb-3">
                   Dados Técnicos
