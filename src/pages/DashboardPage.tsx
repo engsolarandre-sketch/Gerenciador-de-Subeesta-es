@@ -4,7 +4,7 @@ import Badge from '../components/Badge'
 import { STATUS_LABELS, type ProjectStatus } from '../types'
 import {
   AlertCircle, ArrowUpRight, Building2, CheckCircle2,
-  Clock, FolderKanban, Gauge, Users, Zap
+  Clock, FolderKanban, Gauge, Users
 } from 'lucide-react'
 import clsx from 'clsx'
 
@@ -43,45 +43,36 @@ export default function DashboardPage() {
   }
 
   return (
-    <div className="mx-auto flex max-w-7xl flex-col gap-6">
-      <section className="overflow-hidden rounded-lg border border-slate-200 bg-slate-950 text-white shadow-lg">
-        <div className="grid gap-6 p-6 lg:grid-cols-[1.4fr_0.9fr] lg:p-7">
-          <div>
-            <div className="mb-5 inline-flex items-center gap-2 rounded-full bg-white/10 px-3 py-1 text-xs font-semibold text-teal-100">
-              <Zap size={13} />
-              Projetos elétricos em acompanhamento
-            </div>
-            <h1 className="max-w-3xl text-3xl font-bold tracking-tight">
-              Visão executiva da carteira de subestações
-            </h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-300">
-              Prazos, etapas e partes envolvidas reunidos em uma visão operacional para tomada de decisão.
-            </p>
-            <div className="mt-6 flex flex-wrap gap-3">
-              <button className="app-button-primary bg-teal-500 hover:bg-teal-400" onClick={() => navigate('/projects/new')}>
-                Novo Projeto
-                <ArrowUpRight size={16} />
-              </button>
-              <button className="inline-flex items-center justify-center gap-2 rounded-lg border border-white/15 px-4 py-2 text-sm font-semibold text-white hover:bg-white/10" onClick={() => navigate('/portal')}>
-                Visão por fase
-              </button>
-            </div>
-          </div>
+    <div className="mx-auto flex max-w-7xl flex-col gap-5">
+      <section className="flex flex-col gap-4 border-b border-slate-200 pb-5 lg:flex-row lg:items-end lg:justify-between">
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">Dashboard</p>
+          <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-950">Carteira de projetos</h1>
+          <p className="mt-1 text-sm text-slate-500">
+            Acompanhamento técnico, prazos e status dos projetos de subestação.
+          </p>
+        </div>
 
-          <div className="grid grid-cols-2 gap-3">
-            <HeroStat label="Ativos" value={inProgress + waiting} />
-            <HeroStat label="Atrasados" value={overdueCount} tone={overdueCount > 0 ? 'danger' : 'ok'} />
-            <HeroStat label="Conclusão" value={`${completionRate}%`} />
-            <HeroStat label="Cadastros" value={clients.length + resellers.length} />
-          </div>
+        <div className="flex flex-wrap gap-2">
+          <button className="app-button-primary" onClick={() => navigate('/projects/new')}>
+            Novo Projeto
+            <ArrowUpRight size={16} />
+          </button>
+          <button
+            className="inline-flex items-center justify-center gap-2 rounded-lg border border-slate-200 bg-white px-4 py-2 text-sm font-semibold text-slate-700 shadow-sm hover:bg-slate-50"
+            onClick={() => navigate('/portal')}>
+            Visão por fase
+          </button>
         </div>
       </section>
 
-      <section className="grid grid-cols-2 gap-4 lg:grid-cols-4">
-        <MetricCard icon={<FolderKanban size={19} />} label="Total de Projetos" value={total} tone="blue" onClick={() => navigate('/projects')} />
-        <MetricCard icon={<Clock size={19} />} label="Em Andamento" value={inProgress} tone="yellow" onClick={() => navigate('/projects')} />
-        <MetricCard icon={<AlertCircle size={19} />} label="Aguardando" value={waiting} tone="orange" onClick={() => navigate('/projects')} />
-        <MetricCard icon={<CheckCircle2 size={19} />} label="Concluídos" value={completed} tone="green" onClick={() => navigate('/projects')} />
+      <section className="grid grid-cols-2 gap-4 lg:grid-cols-6">
+        <MetricCard icon={<FolderKanban size={19} />} label="Total" value={total} detail="Projetos" tone="blue" onClick={() => navigate('/projects')} />
+        <MetricCard icon={<Clock size={19} />} label="Andamento" value={inProgress} detail="Em execução" tone="yellow" onClick={() => navigate('/projects')} />
+        <MetricCard icon={<AlertCircle size={19} />} label="Aguardando" value={waiting} detail="Pendências" tone="orange" onClick={() => navigate('/projects')} />
+        <MetricCard icon={<CheckCircle2 size={19} />} label="Concluídos" value={completed} detail={`${completionRate}% da carteira`} tone="green" onClick={() => navigate('/projects')} />
+        <KpiTile label="Atrasados" value={overdueCount} alert={overdueCount > 0} />
+        <KpiTile label="Cadastros" value={clients.length + resellers.length} />
       </section>
 
       {overdueCount > 0 && (
@@ -188,22 +179,11 @@ export default function DashboardPage() {
   )
 }
 
-function HeroStat({ label, value, tone }: { label: string; value: string | number; tone?: 'danger' | 'ok' }) {
-  return (
-    <div className="rounded-lg border border-white/10 bg-white/[0.06] p-4">
-      <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{label}</p>
-      <p className={clsx(
-        'mt-2 text-2xl font-bold',
-        tone === 'danger' ? 'text-red-200' : tone === 'ok' ? 'text-emerald-200' : 'text-white'
-      )}>{value}</p>
-    </div>
-  )
-}
-
-function MetricCard({ icon, label, value, tone, onClick }: {
+function MetricCard({ icon, label, value, detail, tone, onClick }: {
   icon: React.ReactNode
   label: string
   value: number
+  detail: string
   tone: 'blue' | 'yellow' | 'orange' | 'green'
   onClick: () => void
 }) {
@@ -214,13 +194,26 @@ function MetricCard({ icon, label, value, tone, onClick }: {
     green: 'bg-emerald-50 text-emerald-700',
   }
   return (
-    <button onClick={onClick} className="app-card flex items-center gap-4 p-4 text-left hover:-translate-y-0.5 hover:shadow-md">
+    <button onClick={onClick} className="app-card flex items-center gap-3 p-4 text-left hover:-translate-y-0.5 hover:shadow-md lg:col-span-1">
       <div className={clsx('flex h-10 w-10 items-center justify-center rounded-lg', tones[tone])}>{icon}</div>
-      <div>
-        <p className="text-2xl font-bold text-slate-900">{value}</p>
-        <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <div className="min-w-0">
+        <p className="text-xl font-bold text-slate-900">{value}</p>
+        <p className="truncate text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+        <p className="truncate text-xs text-slate-400">{detail}</p>
       </div>
     </button>
+  )
+}
+
+function KpiTile({ label, value, alert }: { label: string; value: number; alert?: boolean }) {
+  return (
+    <div className={clsx(
+      'app-card flex flex-col justify-between p-4',
+      alert && 'border-red-200 bg-red-50'
+    )}>
+      <p className="text-xs font-semibold uppercase tracking-wide text-slate-500">{label}</p>
+      <p className={clsx('mt-2 text-xl font-bold', alert ? 'text-red-700' : 'text-slate-900')}>{value}</p>
+    </div>
   )
 }
 
