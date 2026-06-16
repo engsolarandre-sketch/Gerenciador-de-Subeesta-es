@@ -1,174 +1,241 @@
-import { useState } from 'react'
-import { FileText, Download, Send, Eye, AlertCircle, CheckCircle2, X } from 'lucide-react'
-import { buildDocumentData, downloadAsPdf, downloadAsDocx } from '../utils/documentUtils'
+import { useEffect, useRef, useState } from 'react'
+import { AlertCircle, Download, FileText, Loader2, Paperclip, Trash2, Upload } from 'lucide-react'
+import { supabase } from '../lib/supabase'
 import type { Client, Project } from '../types'
 
-const REQUEST_TYPE_LABELS: Record<string, string> = {
-  CONNECTION_NEW: 'Ligação Nova MT',
-  STANDARD_ADEQUACY: 'Alteração/Adequação de Subestação',
-  DEMAND_CHANGE: 'Aumento de Demanda',
-  OWNERSHIP_TRANSFER: 'Troca de Titularidade MT',
-  SCHEDULED_SHUTDOWN: 'Desligamento Programado',
+const DOCUMENTS_BUCKET = 'project-documents'
+
+type Attachment = {
+  id?: string | null
+  name: string
+  created_at?: string | null
+  updated_at?: string | null
+  metadata?: {
+    size?: number
+    mimetype?: string
+  } | null
 }
 
 interface Props {
   project: Project
-  client: Client | undefined
-  substationType: { name: string } | undefined
-  requestTypes: { id: string; name: string }[]
+  client?: Client
+  substationType?: { name: string }
+  requestTypes?: { id: string; name: string }[]
 }
 
-export default function DocumentsTab({ project, client, substationType, requestTypes }: Props) {
-  const [previewOpen, setPreviewOpen] = useState(false)
-  const [signatureSent, setSignatureSent] = useState(false)
+export default function DocumentsTab({ project }: Props) {
+  const inputRef = useRef<HTMLInputElement | null>(null)
+  const [attachments, setAttachments] = useState<Attachment[]>([])
+  const [loading, setLoading] = useState(true)
+  const [uploading, setUploading] = useState(false)
+  const [deletingName, setDeletingName] = useState<string | null>(null)
+  const [error, setError] = useState('')
 
-  const code = String(project.requestTypeId ?? '')
-  const configuredTypeName = requestTypes.find(rt => rt.id === code)?.name
-  const typeName = configuredTypeName ?? REQUEST_TYPE_LABELS[code]
+  useEffect(() => {
+    loadAttachments()
+  }, [project.id])
 
-  if (!code || !typeName) {
-    return (
-      <div className="p-8 flex flex-col items-center justify-center py-16">
-        <AlertCircle size={32} className="mb-3 text-gray-300" />
-        <p className="font-medium text-gray-600 text-sm">Tipo de solicitação não definido</p>
-        <p className="text-xs mt-1 text-center max-w-xs text-gray-400">
-          Edite o projeto e selecione o <strong>Tipo de Solicitação</strong> para gerar documentos.
-        </p>
-      </div>
-    )
+  async function loadAttachments() {
+    setLoading(true)
+    setError('')
+
+    const { data, error: listError } = await supabase.storage
+      .from(DOCUMENTS_BUCKET)
+      .list(project.id, { limit: 100, sortBy: { column: 'created_at', order: 'desc' } })
+
+    if (listError) {
+      setError('Não foi possível carregar os anexos. Verifique se o bucket project-documents existe no Supabase Storage.')
+      setAttachments([])
+    } else {
+      setAttachments((data ?? []).filter(item => item.name !== '.emptyFolderPlaceholder'))
+    }
+
+    setLoading(false)
   }
 
-  const docData = buildDocumentData({ ...project, requestTypeName: typeName } as Record<string, unknown>, client as Record<string, unknown> | undefined, substationType)
-  const slug = `${typeName}-${String(client?.name ?? 'cliente')}`
-    .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s+/g, '-').replace(/[^a-zA-Z0-9-]/g, '').toLowerCase()
+  async function handleFilesSelected(event: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(event.target.files ?? [])
+    if (files.length === 0) return
 
-  const missing: string[] = []
-  if (!client?.name) missing.push('Nome do cliente')
-  if (!client?.cpfCnpj) missing.push('CPF / CNPJ')
-  if (!client?.numeroUC) missing.push('Nº da UC')
-  if (!project.concessionaria) missing.push('Concessionária')
+    setUploading(true)
+    setError('')
+
+    for (const file of files) {
+      const path = `${project.id}/${Date.now()}-${file.name}`
+      const { error: uploadError } = await supabase.storage
+        .from(DOCUMENTS_BUCKET)
+        .upload(path, file, {
+          cacheControl: '3600',
+          upsert: false,
+          contentType: file.type || undefined,
+        })
+
+      if (uploadError) {
+        setError(`Falha ao anexar "${file.name}". ${uploadError.message}`)
+        break
+      }
+    }
+
+    event.target.value = ''
+    setUploading(false)
+    await loadAttachments()
+  }
+
+  async function downloadAttachment(name: string) {
+    setError('')
+    const { data, error: signedUrlError } = await supabase.storage
+      .from(DOCUMENTS_BUCKET)
+      .createSignedUrl(`${project.id}/${name}`, 60)
+
+    if (signedUrlError || !data?.signedUrl) {
+      setError('Não foi possível gerar o link de download.')
+      return
+    }
+
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer')
+  }
+
+  async function deleteAttachment(name: string) {
+    if (!confirm(`Excluir o anexo "${displayName(name)}"?`)) return
+
+    setDeletingName(name)
+    setError('')
+
+    const { error: removeError } = await supabase.storage
+      .from(DOCUMENTS_BUCKET)
+      .remove([`${project.id}/${name}`])
+
+    if (removeError) {
+      setError('Não foi possível excluir o anexo.')
+    } else {
+      setAttachments(prev => prev.filter(item => item.name !== name))
+    }
+
+    setDeletingName(null)
+  }
 
   return (
-    <div className="p-6 space-y-5">
-      <div className="flex items-center gap-2">
-        <FileText size={17} className="text-brand shrink-0" />
-        <div>
-          <p className="font-semibold text-gray-800 text-sm">{typeName}</p>
-          <p className="text-xs text-gray-400 mt-0.5">
-            Formulário preenchido automaticamente com os dados do projeto.
-          </p>
-        </div>
-      </div>
-
-      {missing.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2.5">
-          <AlertCircle size={14} className="text-amber-500 shrink-0 mt-0.5" />
+    <div className="p-6">
+      <div className="mb-5 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex items-center gap-3">
+          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-brand/10 text-brand">
+            <Paperclip size={18} />
+          </div>
           <div>
-            <p className="text-xs font-medium text-amber-800">
-              Campos em branco — documento gerado com lacunas
-            </p>
-            <p className="text-xs text-amber-600 mt-0.5">{missing.join(' · ')}</p>
-          </div>
-        </div>
-      )}
-
-      {previewOpen && (
-        <div className="border rounded-xl overflow-hidden bg-white shadow-sm">
-          <div className="bg-gray-50 border-b px-4 py-2 flex items-center justify-between">
-            <span className="text-xs font-semibold text-gray-500 uppercase tracking-wider">
-              Pré-visualização
-            </span>
-            <button
-              onClick={() => setPreviewOpen(false)}
-              className="text-gray-400 hover:text-gray-600 p-1 rounded transition-colors"
-              aria-label="Fechar preview"
-            >
-              <X size={14} />
-            </button>
-          </div>
-          <div className="p-5 max-h-96 overflow-y-auto">
-            <h3 className="text-sm font-bold text-center border-b pb-2 mb-4 text-gray-900">
-              {docData.title}
-            </h3>
-            {docData.sections.map((sec, i) => (
-              <div key={i} className="mb-4">
-                <div className="text-xs font-semibold text-gray-500 uppercase tracking-wider bg-gray-100 px-3 py-1.5 rounded mb-1">
-                  {sec.heading}
-                </div>
-                <table className="w-full text-xs border-collapse">
-                  <tbody>
-                    {sec.rows.map((row, j) => (
-                      <tr key={j} className="border-b border-gray-50">
-                        <td className="py-1.5 pr-3 text-gray-400 font-medium w-44">{row.label}</td>
-                        <td className={`py-1.5 ${row.value === '_______________' ? 'text-amber-400 italic' : 'text-gray-800'}`}>
-                          {row.value === '_______________' ? '(não preenchido)' : row.value}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            ))}
-            <div className="flex gap-8 mt-5 pt-4 border-t">
-              {['Assinatura do Solicitante', 'Responsável Técnico', 'Concessionária'].map(s => (
-                <div key={s} className="flex-1 border-t border-gray-400 pt-1.5 text-center text-xs text-gray-400">{s}</div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-        <button
-          onClick={() => setPreviewOpen(v => !v)}
-          className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-gray-200 bg-white text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors"
-        >
-          <Eye size={15} />
-          {previewOpen ? 'Fechar Preview' : 'Pré-visualizar'}
-        </button>
-
-        <button
-          onClick={() => downloadAsDocx(docData, slug)}
-          className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-blue-200 bg-blue-50 text-sm font-medium text-blue-700 hover:bg-blue-100 transition-colors"
-        >
-          <Download size={15} />
-          Baixar Word (.doc)
-        </button>
-
-        <button
-          onClick={() => downloadAsPdf(docData)}
-          className="flex items-center justify-center gap-2 px-4 py-3 rounded-xl border border-emerald-200 bg-emerald-50 text-sm font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
-        >
-          <Download size={15} />
-          Baixar PDF
-        </button>
-      </div>
-
-      <div className="border border-dashed border-gray-200 rounded-xl p-4 bg-gray-50/50">
-        <div className="flex items-start gap-3">
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-medium text-gray-700">Enviar para Assinatura Digital</p>
-            <p className="text-xs text-gray-400 mt-0.5">
-              DocuSign, D4Sign ou similar — integração disponível em breve.
+            <p className="text-sm font-bold text-slate-900">Anexos do projeto</p>
+            <p className="text-xs text-slate-500">
+              Arquivos salvos no Supabase Storage para este projeto.
             </p>
           </div>
+        </div>
+
+        <div>
+          <input
+            ref={inputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={handleFilesSelected}
+          />
           <button
-            onClick={() => { setSignatureSent(true); setTimeout(() => setSignatureSent(false), 3000) }}
-            className={`flex items-center gap-1.5 px-3 py-2 rounded-lg text-xs font-medium border transition-all shrink-0 ${
-              signatureSent
-                ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                : 'bg-white text-gray-400 border-gray-200 cursor-not-allowed'
-            }`}
-            title="Em desenvolvimento"
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            disabled={uploading}
+            className="app-button-primary disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {signatureSent
-              ? <><CheckCircle2 size={13} /> Simulado!</>
-              : <><Send size={13} /> Em breve</>
-            }
+            {uploading ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
+            {uploading ? 'Enviando...' : 'Anexar arquivos'}
           </button>
         </div>
       </div>
+
+      {error && (
+        <div className="mb-4 flex gap-2 rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          <AlertCircle size={16} className="mt-0.5 shrink-0" />
+          <p>{error}</p>
+        </div>
+      )}
+
+      {loading ? (
+        <div className="flex items-center justify-center rounded-lg border border-dashed border-slate-200 bg-slate-50 py-12 text-sm text-slate-500">
+          <Loader2 size={18} className="mr-2 animate-spin" />
+          Carregando anexos...
+        </div>
+      ) : attachments.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50 px-6 py-12 text-center">
+          <FileText size={30} className="mx-auto mb-3 text-slate-300" />
+          <p className="text-sm font-semibold text-slate-700">Nenhum anexo enviado</p>
+          <p className="mt-1 text-xs text-slate-500">
+            Anexe ARTs, formulários, procurações, croquis, protocolos ou documentos da concessionária.
+          </p>
+        </div>
+      ) : (
+        <div className="overflow-hidden rounded-lg border border-slate-200 bg-white">
+          <div className="grid grid-cols-[1fr_140px_160px_96px] gap-3 border-b border-slate-100 bg-slate-50 px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500">
+            <div>Arquivo</div>
+            <div>Tamanho</div>
+            <div>Enviado em</div>
+            <div className="text-right">Ações</div>
+          </div>
+
+          <div className="divide-y divide-slate-100">
+            {attachments.map(file => (
+              <div key={file.id ?? file.name} className="grid grid-cols-[1fr_140px_160px_96px] items-center gap-3 px-4 py-3">
+                <div className="flex min-w-0 items-center gap-3">
+                  <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+                    <FileText size={16} />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-semibold text-slate-900">{displayName(file.name)}</p>
+                    <p className="truncate text-xs text-slate-400">{file.metadata?.mimetype ?? 'Arquivo'}</p>
+                  </div>
+                </div>
+                <div className="text-sm text-slate-500">{formatBytes(file.metadata?.size)}</div>
+                <div className="text-sm text-slate-500">{formatDate(file.created_at ?? file.updated_at)}</div>
+                <div className="flex items-center justify-end gap-1">
+                  <button
+                    type="button"
+                    onClick={() => downloadAttachment(file.name)}
+                    className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 hover:text-brand"
+                    title="Baixar anexo"
+                  >
+                    <Download size={16} />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => deleteAttachment(file.name)}
+                    disabled={deletingName === file.name}
+                    className="rounded-lg p-2 text-slate-500 hover:bg-red-50 hover:text-red-600 disabled:opacity-50"
+                    title="Excluir anexo"
+                  >
+                    {deletingName === file.name ? <Loader2 size={16} className="animate-spin" /> : <Trash2 size={16} />}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   )
+}
+
+function displayName(name: string) {
+  return name.replace(/^\d+-/, '')
+}
+
+function formatBytes(size?: number) {
+  if (!size) return '—'
+  if (size < 1024) return `${size} B`
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`
+  return `${(size / 1024 / 1024).toFixed(1)} MB`
+}
+
+function formatDate(iso?: string | null) {
+  if (!iso) return '—'
+  return new Date(iso).toLocaleDateString('pt-BR', {
+    day: '2-digit',
+    month: '2-digit',
+    year: 'numeric',
+  })
 }
