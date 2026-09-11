@@ -1,394 +1,557 @@
-import { useState } from 'react'
+import { useMemo, useState, type ReactNode } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import {
-  FolderOpen, Plus, Search, ChevronRight, Clock, CheckCircle2,
-  AlertTriangle, XCircle, Calendar, User, Building2, Trash2, Filter
+  AlertTriangle,
+  ArrowUpRight,
+  BarChart3,
+  Building2,
+  Calendar,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  Filter,
+  FolderOpen,
+  Gauge,
+  Layers3,
+  Plus,
+  Search,
+  SlidersHorizontal,
+  Trash2,
+  User,
+  XCircle,
 } from 'lucide-react'
-import { useApp } from '../context/AppContext'
-import { STATUS_LABELS, type ProjectStatus } from '../types'
 import clsx from 'clsx'
+import { useApp } from '../context/AppContext'
+import { STATUS_LABELS, type Project, type ProjectStatus } from '../types'
 
+type SortOption = 'recent' | 'deadline' | 'progress' | 'risk'
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
-const STATUS_COLOR: Record<ProjectStatus, string> = {
-  IN_PROGRESS: 'blue', WAITING: 'yellow', COMPLETED: 'green', CANCELLED: 'red',
+type EnrichedProject = {
+  project: Project
+  client?: { id: string; name: string }
+  reseller?: { id: string; name: string }
+  substationType?: { id: string; name: string }
+  requestType?: { id: string; name: string }
+  currentStage?: Project['stages'][number]
+  currentPhase?: { id: string; name: string; color: string }
+  progress: { done: number; total: number; percent: number }
+  daysLeft: number | null
+  riskScore: number
 }
 
-
-const STATUS_STYLE: Record<ProjectStatus, { bg: string; text: string; icon: React.ReactNode }> = {
+const STATUS_STYLE: Record<ProjectStatus, { bg: string; text: string; border: string; icon: ReactNode }> = {
   IN_PROGRESS: {
-    bg: 'var(--color-blue-highlight)',
-    text: 'var(--color-blue)',
-    icon: <Clock className="w-3 h-3" />,
+    bg: 'bg-blue-50',
+    text: 'text-blue-700',
+    border: 'border-blue-100',
+    icon: <Clock className="h-3.5 w-3.5" />,
   },
   WAITING: {
-    bg: 'var(--color-warning-highlight)',
-    text: 'var(--color-warning)',
-    icon: <AlertTriangle className="w-3 h-3" />,
+    bg: 'bg-amber-50',
+    text: 'text-amber-700',
+    border: 'border-amber-100',
+    icon: <AlertTriangle className="h-3.5 w-3.5" />,
   },
   COMPLETED: {
-    bg: 'var(--color-success-highlight)',
-    text: 'var(--color-success)',
-    icon: <CheckCircle2 className="w-3 h-3" />,
+    bg: 'bg-emerald-50',
+    text: 'text-emerald-700',
+    border: 'border-emerald-100',
+    icon: <CheckCircle2 className="h-3.5 w-3.5" />,
   },
   CANCELLED: {
-    bg: 'var(--color-error-highlight)',
-    text: 'var(--color-error)',
-    icon: <XCircle className="w-3 h-3" />,
+    bg: 'bg-rose-50',
+    text: 'text-rose-700',
+    border: 'border-rose-100',
+    icon: <XCircle className="h-3.5 w-3.5" />,
   },
 }
 
-
 function formatDate(iso?: string) {
-  if (!iso) return '—'
-  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+  if (!iso) return 'Sem prazo'
+  return new Date(iso).toLocaleDateString('pt-BR', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+function getProgress(project: Project) {
+  const activeStages = project.stages.filter(stage => stage.status !== 'SKIPPED')
+  if (activeStages.length === 0) return { done: 0, total: 0, percent: 0 }
 
-// ─── Componente principal ─────────────────────────────────────────────────────
+  const done = activeStages.filter(stage => stage.status === 'COMPLETED').length
+  return { done, total: activeStages.length, percent: Math.round((done / activeStages.length) * 100) }
+}
+
+function getDaysLeft(project: Project) {
+  if (!project.plannedEndDate || project.status === 'COMPLETED' || project.status === 'CANCELLED') return null
+  return Math.ceil((new Date(project.plannedEndDate).getTime() - Date.now()) / 86400000)
+}
+
+function getRiskScore(project: Project) {
+  const daysLeft = getDaysLeft(project)
+  const waitingStages = project.stages.filter(stage => stage.status === 'WAITING_APPROVAL').length
+  const progress = getProgress(project).percent
+
+  if (project.status === 'CANCELLED' || project.status === 'COMPLETED') return -1
+  let score = waitingStages * 8
+  if (project.status === 'WAITING') score += 20
+  if (daysLeft !== null && daysLeft < 0) score += 40
+  if (daysLeft !== null && daysLeft <= 15) score += 15
+  if (progress < 30) score += 5
+  return score
+}
+
 export default function ProjectsPage() {
   const navigate = useNavigate()
-  const { projects, clients, resellers, substationTypes, requestTypes, deleteProject } = useApp()
+  const { projects, clients, resellers, substationTypes, requestTypes, macroPhases, deleteProject } = useApp()
 
-
-  const [search, setSearch]                       = useState('')
-  const [filterStatus, setFilterStatus]           = useState<ProjectStatus | ''>('')
-  const [filterReseller, setFilterReseller]       = useState('')
+  const [search, setSearch] = useState('')
+  const [filterStatus, setFilterStatus] = useState<ProjectStatus | ''>('')
+  const [filterReseller, setFilterReseller] = useState('')
   const [filterRequestType, setFilterRequestType] = useState('')
-  const [sortBy, setSortBy]                       = useState<'recent' | 'deadline' | 'progress'>('recent')
+  const [sortBy, setSortBy] = useState<SortOption>('risk')
 
+  const enrichedProjects = useMemo<EnrichedProject[]>(() => projects.map(project => {
+    const client = clients.find(item => item.id === project.clientId)
+    const reseller = resellers.find(item => item.id === project.resellerId)
+    const substationType = substationTypes.find(item => item.id === project.substationTypeId)
+    const requestType = requestTypes.find(item => item.id === project.requestTypeId)
+    const currentStage = project.stages.find(stage => stage.stageNumber === project.currentStage)
+    const currentPhase = macroPhases.find(phase => phase.id === currentStage?.macroPhaseId)
 
-  // ── Filtro + ordenação ──────────────────────────────────────────────────────
-  const filtered = projects
-    .filter(p => {
-      const client       = clients.find(c => c.id === p.clientId)
-      const reseller     = resellers.find(r => r.id === p.resellerId)
-      const subType      = substationTypes.find(t => t.id === p.substationTypeId)
-      const q = search.toLowerCase()
-      const matchSearch  = !q ||
-        p.title.toLowerCase().includes(q) ||
-        (client?.name ?? '').toLowerCase().includes(q) ||
-        (reseller?.name ?? '').toLowerCase().includes(q) ||
-        (subType?.name ?? '').toLowerCase().includes(q) ||
-        p.concessionaria.toLowerCase().includes(q)
-      const matchStatus      = !filterStatus      || p.status === filterStatus
-      const matchReseller    = !filterReseller    || p.resellerId === filterReseller
-      const matchRequestType = !filterRequestType || p.requestTypeId === filterRequestType
-      return matchSearch && matchStatus && matchReseller && matchRequestType
-    })
-    .sort((a, b) => {
-      if (sortBy === 'recent')   return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
-      if (sortBy === 'deadline') {
-        const da = a.plannedEndDate ? new Date(a.plannedEndDate).getTime() : Infinity
-        const db = b.plannedEndDate ? new Date(b.plannedEndDate).getTime() : Infinity
-        return da - db
-      }
-      // progress
-      const progA = a.stages.filter(s => s.status !== 'SKIPPED').length
-        ? Math.round(a.stages.filter(s => s.status === 'COMPLETED').length / a.stages.filter(s => s.status !== 'SKIPPED').length * 100) : 0
-      const progB = b.stages.filter(s => s.status !== 'SKIPPED').length
-        ? Math.round(b.stages.filter(s => s.status === 'COMPLETED').length / b.stages.filter(s => s.status !== 'SKIPPED').length * 100) : 0
-      return progB - progA
-    })
+    return {
+      project,
+      client,
+      reseller,
+      substationType,
+      requestType,
+      currentStage,
+      currentPhase,
+      progress: getProgress(project),
+      daysLeft: getDaysLeft(project),
+      riskScore: getRiskScore(project),
+    }
+  }), [clients, macroPhases, projects, requestTypes, resellers, substationTypes])
 
+  const filtered = useMemo(() => {
+    const query = search.trim().toLowerCase()
 
-  // ── Stats ───────────────────────────────────────────────────────────────────
-  const total      = projects.length
-  const inProgress = projects.filter(p => p.status === 'IN_PROGRESS').length
-  const waiting    = projects.filter(p => p.status === 'WAITING').length
-  const completed  = projects.filter(p => p.status === 'COMPLETED').length
-  const overdue    = projects.filter(p => {
-    if (!p.plannedEndDate || p.status === 'COMPLETED' || p.status === 'CANCELLED') return false
-    return new Date(p.plannedEndDate).getTime() < Date.now()
-  }).length
+    return enrichedProjects
+      .filter(item => {
+        const { project, client, reseller, substationType, requestType } = item
+        const matchesSearch = !query || [
+          project.title,
+          client?.name,
+          reseller?.name,
+          substationType?.name,
+          requestType?.name,
+          project.concessionaria,
+        ].some(value => (value ?? '').toLowerCase().includes(query))
 
+        return matchesSearch &&
+          (!filterStatus || project.status === filterStatus) &&
+          (!filterReseller || project.resellerId === filterReseller) &&
+          (!filterRequestType || project.requestTypeId === filterRequestType)
+      })
+      .sort((a, b) => {
+        if (sortBy === 'deadline') {
+          const deadlineA = a.project.plannedEndDate ? new Date(a.project.plannedEndDate).getTime() : Infinity
+          const deadlineB = b.project.plannedEndDate ? new Date(b.project.plannedEndDate).getTime() : Infinity
+          return deadlineA - deadlineB
+        }
+        if (sortBy === 'progress') return b.progress.percent - a.progress.percent
+        if (sortBy === 'risk') return b.riskScore - a.riskScore
+        return new Date(b.project.createdAt).getTime() - new Date(a.project.createdAt).getTime()
+      })
+  }, [enrichedProjects, filterRequestType, filterReseller, filterStatus, search, sortBy])
 
-  const sel = 'text-sm font-medium px-3 py-2 rounded-lg border focus:outline-none'
+  const portfolio = useMemo(() => {
+    const active = enrichedProjects.filter(item => item.project.status !== 'COMPLETED' && item.project.status !== 'CANCELLED')
+    const overdue = active.filter(item => item.daysLeft !== null && item.daysLeft < 0)
+    const dueSoon = active.filter(item => item.daysLeft !== null && item.daysLeft >= 0 && item.daysLeft <= 15)
+    const averageProgress = active.length
+      ? Math.round(active.reduce((sum, item) => sum + item.progress.percent, 0) / active.length)
+      : 0
+    const phaseLoad = macroPhases.map(phase => ({
+      phase,
+      total: active.filter(item => item.currentPhase?.id === phase.id).length,
+    })).filter(item => item.total > 0)
+    const nextDeadlines = active
+      .filter(item => item.project.plannedEndDate)
+      .sort((a, b) => new Date(a.project.plannedEndDate ?? '').getTime() - new Date(b.project.plannedEndDate ?? '').getTime())
+      .slice(0, 4)
 
+    return { active, overdue, dueSoon, averageProgress, phaseLoad, nextDeadlines }
+  }, [enrichedProjects, macroPhases])
+
+  const hasFilters = Boolean(search || filterStatus || filterReseller || filterRequestType)
 
   return (
-    <div className="p-6 space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6 p-6">
+      <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        <div className="grid gap-0 lg:grid-cols-[1fr_360px]">
+          <div className="border-b border-slate-100 p-6 lg:border-b-0 lg:border-r">
+            <div className="flex flex-col gap-5 md:flex-row md:items-start md:justify-between">
+              <div>
+                <div className="inline-flex items-center gap-2 rounded-full border border-teal-100 bg-teal-50 px-3 py-1 text-xs font-semibold text-teal-700">
+                  <Gauge className="h-3.5 w-3.5" />
+                  Carteira técnica
+                </div>
+                <h1 className="mt-3 text-2xl font-bold text-slate-950">Projetos</h1>
+                <p className="mt-1 max-w-2xl text-sm text-slate-500">
+                  Controle prazos, responsáveis, etapas e riscos dos projetos de subestação em uma visão operacional.
+                </p>
+              </div>
 
+              <button
+                onClick={() => navigate('/projects/new')}
+                className="inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white shadow-sm transition hover:bg-teal-700"
+              >
+                <Plus className="h-4 w-4" />
+                Novo projeto
+              </button>
+            </div>
 
-      {/* ── Header ── */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <FolderOpen className="w-6 h-6" style={{ color: 'var(--color-primary)' }} />
-          <h1 className="text-2xl font-semibold" style={{ color: 'var(--color-text)' }}>Projetos</h1>
-        </div>
-        <button onClick={() => navigate('/projects/new')}
-          className="flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium text-white transition-colors"
-          style={{ background: 'var(--color-primary)' }}>
-          <Plus className="w-4 h-4" /> Novo Projeto
-        </button>
-      </div>
-
-
-      {/* ── Stats ── */}
-      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
-        {[
-          { label: 'Total',        value: total,      color: 'var(--color-text)',    bg: 'var(--color-surface)' },
-          { label: 'Em Andamento', value: inProgress, color: 'var(--color-blue)',    bg: 'var(--color-blue-highlight)' },
-          { label: 'Aguardando',   value: waiting,    color: 'var(--color-warning)', bg: 'var(--color-warning-highlight)' },
-          { label: 'Concluídos',   value: completed,  color: 'var(--color-success)', bg: 'var(--color-success-highlight)' },
-          { label: 'Atrasados',    value: overdue,    color: overdue > 0 ? 'var(--color-error)' : 'var(--color-text-muted)', bg: overdue > 0 ? 'var(--color-error-highlight)' : 'var(--color-surface)' },
-        ].map(s => (
-          <div key={s.label} className="rounded-xl p-4"
-            style={{ border: '1px solid var(--color-border)', background: s.bg }}>
-            <p className="text-xs uppercase tracking-wide font-medium" style={{ color: 'var(--color-text-muted)' }}>
-              {s.label}
-            </p>
-            <p className="text-2xl font-bold tabular-nums mt-1" style={{ color: s.color }}>
-              {s.value}
-            </p>
+            <div className="mt-6 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+              <MetricCard label="Ativos" value={portfolio.active.length} icon={<FolderOpen className="h-4 w-4" />} tone="teal" />
+              <MetricCard label="Atrasados" value={portfolio.overdue.length} icon={<AlertTriangle className="h-4 w-4" />} tone="rose" />
+              <MetricCard label="Vencem em breve" value={portfolio.dueSoon.length} icon={<Calendar className="h-4 w-4" />} tone="amber" />
+              <MetricCard label="Progresso médio" value={`${portfolio.averageProgress}%`} icon={<BarChart3 className="h-4 w-4" />} tone="blue" />
+            </div>
           </div>
-        ))}
-      </div>
 
+          <aside className="bg-slate-950 p-6 text-white">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-xs font-semibold uppercase text-slate-400">Atenção da semana</p>
+                <p className="mt-1 text-lg font-bold">Prioridade por prazo</p>
+              </div>
+              <SlidersHorizontal className="h-5 w-5 text-teal-300" />
+            </div>
 
-      {/* ── Filtros ── */}
-      <div className="flex flex-col sm:flex-row gap-3 flex-wrap">
-        {/* Busca */}
-        <div className="relative flex-1 min-w-[200px]">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4" style={{ color: 'var(--color-text-muted)' }} />
-          <input
-            type="text"
-            placeholder="Buscar por título, cliente, revendedor, tipo..."
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-            className="w-full pl-9 pr-4 py-2 rounded-lg text-sm focus:outline-none"
-            style={{ border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }}
-          />
-        </div>
-
-
-        {/* Status */}
-        <select value={filterStatus} onChange={e => setFilterStatus(e.target.value as ProjectStatus | '')}
-          className={sel} style={{ border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }}>
-          <option value="">Todos os status</option>
-          <option value="IN_PROGRESS">Em Andamento</option>
-          <option value="WAITING">Aguardando</option>
-          <option value="COMPLETED">Concluído</option>
-          <option value="CANCELLED">Cancelado</option>
-        </select>
-
-
-        {/* Revendedor */}
-        <select value={filterReseller} onChange={e => setFilterReseller(e.target.value)}
-          className={sel} style={{ border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }}>
-          <option value="">Todos os revendedores</option>
-          {resellers.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
-        </select>
-
-
-        {/* Tipo de Solicitação */}
-        <select value={filterRequestType} onChange={e => setFilterRequestType(e.target.value)}
-          className={sel} style={{ border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }}>
-          <option value="">Todos os tipos</option>
-          {requestTypes.map(rt => <option key={rt.id} value={rt.id}>{rt.name}</option>)}
-        </select>
-
-
-        {/* Ordenação */}
-        <select value={sortBy} onChange={e => setSortBy(e.target.value as typeof sortBy)}
-          className={sel} style={{ border: '1px solid var(--color-border)', background: 'var(--color-surface)', color: 'var(--color-text)' }}>
-          <option value="recent">Mais recentes</option>
-          <option value="deadline">Prazo mais próximo</option>
-          <option value="progress">Maior progresso</option>
-        </select>
-      </div>
-
-
-      {/* ── Lista ── */}
-      {filtered.length === 0 ? (
-        <div className="flex flex-col items-center justify-center py-20" style={{ color: 'var(--color-text-muted)' }}>
-          <FolderOpen className="w-12 h-12 mb-3" style={{ color: 'var(--color-text-faint)' }} />
-          <p className="font-medium text-base" style={{ color: 'var(--color-text)' }}>
-            {projects.length === 0 ? 'Nenhum projeto cadastrado ainda.' : 'Nenhum projeto encontrado.'}
-          </p>
-          <p className="text-sm mt-1">
-            {projects.length === 0
-              ? 'Clique em "Novo Projeto" para começar.'
-              : 'Tente ajustar os filtros de busca.'}
-          </p>
-          {projects.length === 0 && (
-            <button onClick={() => navigate('/projects/new')}
-              className="mt-4 flex items-center gap-2 px-5 py-2 rounded-lg text-white text-sm font-medium"
-              style={{ background: 'var(--color-primary)' }}>
-              <Plus className="w-4 h-4" /> Novo Projeto
-            </button>
-          )}
-        </div>
-      ) : (
-        <div className="space-y-3">
-          {/* Contador de resultados */}
-          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>
-            {filtered.length} projeto{filtered.length !== 1 ? 's' : ''} encontrado{filtered.length !== 1 ? 's' : ''}
-          </p>
-
-
-          {filtered.map(p => {
-            const client       = clients.find(c => c.id === p.clientId)
-            const reseller     = resellers.find(r => r.id === p.resellerId)
-            const subType      = substationTypes.find(t => t.id === p.substationTypeId)
-            const requestType  = requestTypes.find(rt => rt.id === p.requestTypeId)
-            const activeStages = p.stages.filter(s => s.status !== 'SKIPPED').length
-            const doneStages   = p.stages.filter(s => s.status === 'COMPLETED').length
-            const progress     = activeStages > 0 ? Math.round(doneStages / activeStages * 100) : 0
-            const currentStage = p.stages.find(s => s.stageNumber === p.currentStage)
-            const daysLeft     = p.plannedEndDate
-              ? Math.ceil((new Date(p.plannedEndDate).getTime() - Date.now()) / 86400000)
-              : null
-            const isOverdue    = daysLeft !== null && daysLeft < 0 && p.status !== 'COMPLETED' && p.status !== 'CANCELLED'
-            const st = STATUS_STYLE[p.status]
-
-
-            return (
-              <div key={p.id}
-                className="rounded-xl transition-shadow hover:shadow-md group"
-                style={{ border: '1px solid var(--color-border)', background: 'var(--color-surface)' }}>
-
-
-                <Link to={`/projects/${p.id}`} className="block p-4">
-                  <div className="flex items-start gap-4">
-
-
-                    {/* Ícone de status */}
-                    <div className="w-10 h-10 rounded-full flex items-center justify-center shrink-0"
-                      style={{ background: st.bg, color: st.text }}>
-                      {st.icon}
+            <div className="mt-5 space-y-3">
+              {portfolio.nextDeadlines.length === 0 ? (
+                <p className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+                  Nenhum prazo ativo cadastrado.
+                </p>
+              ) : portfolio.nextDeadlines.map(item => (
+                <Link
+                  key={item.project.id}
+                  to={`/projects/${item.project.id}`}
+                  className="group block rounded-lg border border-white/10 bg-white/[0.04] p-3 transition hover:border-teal-300/40 hover:bg-white/[0.08]"
+                >
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-semibold">{item.project.title}</p>
+                      <p className="mt-1 text-xs text-slate-400">{formatDate(item.project.plannedEndDate)}</p>
                     </div>
-
-
-                    {/* Conteúdo principal */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-start justify-between gap-3 flex-wrap">
-                        <div className="min-w-0">
-                          <p className="font-semibold truncate" style={{ color: 'var(--color-text)' }}>
-                            {p.title}
-                          </p>
-                          <p className="text-sm mt-0.5 truncate" style={{ color: 'var(--color-text-muted)' }}>
-                            {[subType?.name, p.transformerKva ? `${p.transformerKva} kVA` : null, p.concessionaria]
-                              .filter(Boolean).join(' · ')}
-                          </p>
-                        </div>
-
-
-                        {/* Badge status + dias */}
-                        <div className="flex items-center gap-2 shrink-0 flex-wrap">
-                          {requestType && (
-                            <span className="inline-flex items-center text-xs font-medium px-2 py-1 rounded-full"
-                              style={{ background: 'var(--color-surface-offset)', color: 'var(--color-text-muted)' }}>
-                              {requestType.name}
-                            </span>
-                          )}
-                          <span className="inline-flex items-center gap-1 text-xs font-medium px-2 py-1 rounded-full"
-                            style={{ background: st.bg, color: st.text }}>
-                            {st.icon}
-                            {STATUS_LABELS[p.status]}
-                          </span>
-                          {daysLeft !== null && p.status !== 'COMPLETED' && p.status !== 'CANCELLED' && (
-                            <span className={clsx('text-xs font-medium px-2 py-1 rounded-full', {
-                              'text-red-600 bg-red-50':       isOverdue,
-                              'text-yellow-600 bg-yellow-50': !isOverdue && daysLeft <= 15,
-                              'text-gray-500 bg-gray-100':    !isOverdue && daysLeft > 15,
-                            })}>
-                              {isOverdue ? `${Math.abs(daysLeft)}d atrasado` : `${daysLeft}d restantes`}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-
-                      {/* Info secundária */}
-                      <div className="flex flex-wrap gap-x-4 gap-y-1 mt-2 text-xs"
-                        style={{ color: 'var(--color-text-muted)' }}>
-                        {client && (
-                          <span className="flex items-center gap-1">
-                            <User className="w-3 h-3" />{client.name}
-                          </span>
-                        )}
-                        {reseller && (
-                          <span className="flex items-center gap-1">
-                            <Building2 className="w-3 h-3" />{reseller.name}
-                          </span>
-                        )}
-                        {p.startDate && (
-                          <span className="flex items-center gap-1">
-                            <Calendar className="w-3 h-3" />
-                            Início: {formatDate(p.startDate)}
-                          </span>
-                        )}
-                        {p.plannedEndDate && (
-                          <span className="flex items-center gap-1"
-                            style={{ color: isOverdue ? 'var(--color-error)' : 'inherit' }}>
-                            <Calendar className="w-3 h-3" />
-                            Prazo: {formatDate(p.plannedEndDate)}
-                          </span>
-                        )}
-                      </div>
-
-
-                      {/* Etapa atual */}
-                      {currentStage && p.status === 'IN_PROGRESS' && (
-                        <p className="text-xs mt-1.5 truncate" style={{ color: 'var(--color-text-muted)' }}>
-                          <span className="font-medium" style={{ color: 'var(--color-text)' }}>
-                            Etapa {p.currentStage}:
-                          </span>{' '}
-                          {currentStage.title}
-                        </p>
-                      )}
-
-
-                      {/* Barra de progresso */}
-                      <div className="mt-3">
-                        <div className="flex justify-between text-xs mb-1" style={{ color: 'var(--color-text-muted)' }}>
-                          <span>{progress}% concluído</span>
-                          <span>{doneStages}/{activeStages} etapas</span>
-                        </div>
-                        <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'var(--color-surface-offset)' }}>
-                          <div
-                            className="h-full rounded-full transition-all duration-500"
-                            style={{
-                              width: `${progress}%`,
-                              background: p.status === 'COMPLETED'
-                                ? 'var(--color-success)'
-                                : p.status === 'CANCELLED'
-                                ? 'var(--color-text-faint)'
-                                : 'var(--color-primary)',
-                            }}
-                          />
-                        </div>
-                      </div>
-                    </div>
-
-
-                    {/* Seta + delete */}
-                    <div className="flex flex-col items-center gap-2 shrink-0 self-center">
-                      <ChevronRight className="w-4 h-4 text-gray-300 group-hover:text-gray-500 transition-colors" />
-                    </div>
+                    <span className={clsx('shrink-0 rounded-full px-2 py-1 text-xs font-semibold', {
+                      'bg-rose-400/15 text-rose-200': item.daysLeft !== null && item.daysLeft < 0,
+                      'bg-amber-400/15 text-amber-200': item.daysLeft !== null && item.daysLeft >= 0 && item.daysLeft <= 15,
+                      'bg-teal-400/15 text-teal-200': item.daysLeft !== null && item.daysLeft > 15,
+                    })}>
+                      {item.daysLeft !== null && item.daysLeft < 0 ? `${Math.abs(item.daysLeft)}d atraso` : `${item.daysLeft ?? '-'}d`}
+                    </span>
                   </div>
                 </Link>
-
-
-                {/* Footer do card com botão excluir */}
-                <div className="flex items-center justify-end px-4 pb-3 -mt-1">
-                  <button
-                    onClick={e => {
-                      e.preventDefault()
-                      if (confirm(`Excluir projeto "${p.title}"?`)) deleteProject(p.id)
-                    }}
-                    className="flex items-center gap-1 text-xs px-2 py-1 rounded-lg transition-colors hover:bg-red-50 hover:text-red-500"
-                    style={{ color: 'var(--color-text-faint)' }}
-                    aria-label="Excluir projeto">
-                    <Trash2 className="w-3 h-3" /> Excluir
-                  </button>
-                </div>
-              </div>
-            )
-          })}
+              ))}
+            </div>
+          </aside>
         </div>
+      </section>
+
+      <section className="grid gap-6 xl:grid-cols-[1fr_320px]">
+        <div className="space-y-4">
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center">
+              <div className="relative min-w-[240px] flex-1">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar por projeto, cliente, revendedor, tipo ou concessionária"
+                  value={search}
+                  onChange={event => setSearch(event.target.value)}
+                  className="h-10 w-full rounded-lg border border-slate-200 bg-slate-50 pl-9 pr-3 text-sm text-slate-900 outline-none transition focus:border-teal-500 focus:bg-white focus:ring-3 focus:ring-teal-100"
+                />
+              </div>
+
+              <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+                <Select value={filterStatus} onChange={value => setFilterStatus(value as ProjectStatus | '')}>
+                  <option value="">Status</option>
+                  <option value="IN_PROGRESS">Em andamento</option>
+                  <option value="WAITING">Aguardando</option>
+                  <option value="COMPLETED">Concluído</option>
+                  <option value="CANCELLED">Cancelado</option>
+                </Select>
+
+                <Select value={filterReseller} onChange={setFilterReseller}>
+                  <option value="">Revendedor</option>
+                  {resellers.map(reseller => <option key={reseller.id} value={reseller.id}>{reseller.name}</option>)}
+                </Select>
+
+                <Select value={filterRequestType} onChange={setFilterRequestType}>
+                  <option value="">Tipo</option>
+                  {requestTypes.map(requestType => <option key={requestType.id} value={requestType.id}>{requestType.name}</option>)}
+                </Select>
+
+                <Select value={sortBy} onChange={value => setSortBy(value as SortOption)}>
+                  <option value="risk">Maior risco</option>
+                  <option value="deadline">Prazo próximo</option>
+                  <option value="progress">Maior progresso</option>
+                  <option value="recent">Mais recentes</option>
+                </Select>
+              </div>
+            </div>
+
+            <div className="mt-3 flex items-center justify-between text-xs text-slate-500">
+              <span className="inline-flex items-center gap-1.5">
+                <Filter className="h-3.5 w-3.5" />
+                {filtered.length} de {projects.length} projetos
+              </span>
+              {hasFilters && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch('')
+                    setFilterStatus('')
+                    setFilterReseller('')
+                    setFilterRequestType('')
+                  }}
+                  className="font-semibold text-teal-700 hover:text-teal-800"
+                >
+                  Limpar filtros
+                </button>
+              )}
+            </div>
+          </div>
+
+          {filtered.length === 0 ? (
+            <EmptyState hasProjects={projects.length > 0} onCreate={() => navigate('/projects/new')} />
+          ) : (
+            <div className="grid gap-3">
+              {filtered.map(item => (
+                <ProjectRow key={item.project.id} item={item} onDelete={deleteProject} />
+              ))}
+            </div>
+          )}
+        </div>
+
+        <aside className="space-y-4">
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <div className="flex items-center justify-between">
+              <div>
+                <p className="text-sm font-bold text-slate-950">Distribuição por fase</p>
+                <p className="text-xs text-slate-500">Onde a carteira está concentrada</p>
+              </div>
+              <Layers3 className="h-4 w-4 text-teal-600" />
+            </div>
+
+            <div className="mt-4 space-y-3">
+              {portfolio.phaseLoad.length === 0 ? (
+                <p className="rounded-lg bg-slate-50 p-3 text-sm text-slate-500">Sem projetos ativos por fase.</p>
+              ) : portfolio.phaseLoad.map(({ phase, total }) => {
+                const width = portfolio.active.length ? Math.max(8, Math.round((total / portfolio.active.length) * 100)) : 0
+                return (
+                  <div key={phase.id}>
+                    <div className="flex items-center justify-between text-xs">
+                      <span className="font-semibold text-slate-700">{phase.name}</span>
+                      <span className="text-slate-500">{total}</span>
+                    </div>
+                    <div className="mt-1 h-2 overflow-hidden rounded-full bg-slate-100">
+                      <div className="h-full rounded-full" style={{ width: `${width}%`, backgroundColor: `#${phase.color}` }} />
+                    </div>
+                  </div>
+                )
+              })}
+            </div>
+          </div>
+
+          <div className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm">
+            <p className="text-sm font-bold text-slate-950">Boas práticas aplicadas</p>
+            <div className="mt-3 space-y-3 text-sm text-slate-600">
+              <PracticeItem title="Triagem por risco" description="A ordenação padrão prioriza atraso, bloqueios e aprovações pendentes." />
+              <PracticeItem title="Carteira executiva" description="Métricas no topo mostram saúde, prazo e avanço médio da operação." />
+              <PracticeItem title="Controle por fase" description="A lateral revela gargalos por macrofase do processo elétrico." />
+            </div>
+          </div>
+        </aside>
+      </section>
+    </div>
+  )
+}
+
+function MetricCard({ label, value, icon, tone }: { label: string; value: ReactNode; icon: ReactNode; tone: 'teal' | 'rose' | 'amber' | 'blue' }) {
+  const tones = {
+    teal: 'bg-teal-50 text-teal-700 border-teal-100',
+    rose: 'bg-rose-50 text-rose-700 border-rose-100',
+    amber: 'bg-amber-50 text-amber-700 border-amber-100',
+    blue: 'bg-blue-50 text-blue-700 border-blue-100',
+  }
+
+  return (
+    <div className="rounded-lg border border-slate-200 bg-slate-50 p-4">
+      <div className={clsx('inline-flex h-8 w-8 items-center justify-center rounded-lg border', tones[tone])}>
+        {icon}
+      </div>
+      <p className="mt-3 text-2xl font-bold tabular-nums text-slate-950">{value}</p>
+      <p className="mt-1 text-xs font-semibold uppercase text-slate-500">{label}</p>
+    </div>
+  )
+}
+
+function Select({ value, onChange, children }: { value: string; onChange: (value: string) => void; children: ReactNode }) {
+  return (
+    <select
+      value={value}
+      onChange={event => onChange(event.target.value)}
+      className="h-10 rounded-lg border border-slate-200 bg-white px-3 text-sm font-medium text-slate-700 outline-none transition focus:border-teal-500 focus:ring-3 focus:ring-teal-100"
+    >
+      {children}
+    </select>
+  )
+}
+
+function EmptyState({ hasProjects, onCreate }: { hasProjects: boolean; onCreate: () => void }) {
+  return (
+    <div className="rounded-lg border border-dashed border-slate-300 bg-white p-10 text-center shadow-sm">
+      <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-lg bg-slate-100 text-slate-500">
+        <FolderOpen className="h-5 w-5" />
+      </div>
+      <p className="mt-4 font-bold text-slate-950">{hasProjects ? 'Nenhum projeto encontrado' : 'Nenhum projeto cadastrado'}</p>
+      <p className="mt-1 text-sm text-slate-500">
+        {hasProjects ? 'Ajuste os filtros para ampliar a busca.' : 'Crie o primeiro projeto para iniciar a carteira.'}
+      </p>
+      {!hasProjects && (
+        <button
+          onClick={onCreate}
+          className="mt-5 inline-flex h-10 items-center justify-center gap-2 rounded-lg bg-teal-600 px-4 text-sm font-semibold text-white hover:bg-teal-700"
+        >
+          <Plus className="h-4 w-4" />
+          Novo projeto
+        </button>
       )}
     </div>
+  )
+}
+
+function PracticeItem({ title, description }: { title: string; description: string }) {
+  return (
+    <div className="border-t border-slate-100 pt-3 first:border-t-0 first:pt-0">
+      <p className="font-semibold text-slate-800">{title}</p>
+      <p className="mt-1 text-xs leading-5 text-slate-500">{description}</p>
+    </div>
+  )
+}
+
+function ProjectRow({ item, onDelete }: { item: EnrichedProject; onDelete: (id: string) => void }) {
+  const { project, client, reseller, substationType, requestType, currentStage, currentPhase, progress, daysLeft, riskScore } = item
+  const status = STATUS_STYLE[project.status]
+  const isOverdue = daysLeft !== null && daysLeft < 0
+  const dueSoon = daysLeft !== null && daysLeft >= 0 && daysLeft <= 15
+
+  return (
+    <article className="group overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-teal-200 hover:shadow-md">
+      <Link to={`/projects/${project.id}`} className="block p-4">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-start">
+          <div className="flex min-w-0 flex-1 gap-3">
+            <div className={clsx('flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border', status.bg, status.text, status.border)}>
+              {status.icon}
+            </div>
+
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2 className="truncate text-sm font-bold text-slate-950">{project.title}</h2>
+                <span className={clsx('inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-xs font-semibold', status.bg, status.text, status.border)}>
+                  {STATUS_LABELS[project.status]}
+                </span>
+                {riskScore >= 35 && (
+                  <span className="inline-flex items-center gap-1 rounded-full border border-rose-100 bg-rose-50 px-2 py-0.5 text-xs font-semibold text-rose-700">
+                    <AlertTriangle className="h-3 w-3" />
+                    Alta atenção
+                  </span>
+                )}
+              </div>
+
+              <p className="mt-1 truncate text-sm text-slate-500">
+                {[substationType?.name, project.transformerKva ? `${project.transformerKva} kVA` : null, project.concessionaria]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </p>
+
+              <div className="mt-3 grid gap-2 text-xs text-slate-500 md:grid-cols-2 xl:grid-cols-4">
+                <InfoPill icon={<User className="h-3.5 w-3.5" />} label={client?.name ?? 'Cliente não informado'} />
+                <InfoPill icon={<Building2 className="h-3.5 w-3.5" />} label={reseller?.name ?? 'Revendedor não informado'} />
+                <InfoPill icon={<Calendar className="h-3.5 w-3.5" />} label={`Prazo: ${formatDate(project.plannedEndDate)}`} tone={isOverdue ? 'danger' : dueSoon ? 'warning' : 'default'} />
+                <InfoPill icon={<Layers3 className="h-3.5 w-3.5" />} label={currentPhase?.name ?? requestType?.name ?? 'Sem fase'} />
+              </div>
+
+              {currentStage && (
+                <div className="mt-3 rounded-lg bg-slate-50 px-3 py-2">
+                  <p className="text-xs font-semibold uppercase text-slate-400">Etapa atual</p>
+                  <p className="mt-1 line-clamp-2 text-sm text-slate-700">
+                    {project.currentStage}. {currentStage.title}
+                  </p>
+                </div>
+              )}
+            </div>
+          </div>
+
+          <div className="w-full shrink-0 lg:w-56">
+            <div className="flex items-center justify-between text-xs text-slate-500">
+              <span>{progress.done}/{progress.total} etapas</span>
+              <span className="font-bold text-slate-950">{progress.percent}%</span>
+            </div>
+            <div className="mt-2 h-2 overflow-hidden rounded-full bg-slate-100">
+              <div
+                className={clsx('h-full rounded-full transition-all', {
+                  'bg-emerald-500': project.status === 'COMPLETED',
+                  'bg-slate-400': project.status === 'CANCELLED',
+                  'bg-teal-600': project.status !== 'COMPLETED' && project.status !== 'CANCELLED',
+                })}
+                style={{ width: `${progress.percent}%` }}
+              />
+            </div>
+
+            <div className="mt-3 flex items-center justify-between gap-3">
+              <span className={clsx('rounded-full px-2 py-1 text-xs font-semibold', {
+                'bg-rose-50 text-rose-700': isOverdue,
+                'bg-amber-50 text-amber-700': dueSoon,
+                'bg-slate-100 text-slate-500': !isOverdue && !dueSoon,
+              })}>
+                {daysLeft === null ? 'Sem contagem' : isOverdue ? `${Math.abs(daysLeft)}d atrasado` : `${daysLeft}d restantes`}
+              </span>
+              <ChevronRight className="h-4 w-4 text-slate-300 transition group-hover:text-teal-600" />
+            </div>
+          </div>
+        </div>
+      </Link>
+
+      <div className="flex items-center justify-between border-t border-slate-100 px-4 py-2">
+        <span className="inline-flex items-center gap-1 text-xs text-slate-400">
+          <ArrowUpRight className="h-3.5 w-3.5" />
+          Abrir detalhes do projeto
+        </span>
+        <button
+          onClick={() => {
+            if (confirm(`Excluir projeto "${project.title}"?`)) onDelete(project.id)
+          }}
+          className="inline-flex items-center gap-1 rounded-lg px-2 py-1 text-xs font-semibold text-slate-400 transition hover:bg-rose-50 hover:text-rose-600"
+          aria-label="Excluir projeto"
+        >
+          <Trash2 className="h-3.5 w-3.5" />
+          Excluir
+        </button>
+      </div>
+    </article>
+  )
+}
+
+function InfoPill({ icon, label, tone = 'default' }: { icon: ReactNode; label: string; tone?: 'default' | 'danger' | 'warning' }) {
+  return (
+    <span className={clsx('inline-flex min-w-0 items-center gap-1.5 rounded-lg border px-2.5 py-2', {
+      'border-slate-100 bg-white text-slate-500': tone === 'default',
+      'border-rose-100 bg-rose-50 text-rose-700': tone === 'danger',
+      'border-amber-100 bg-amber-50 text-amber-700': tone === 'warning',
+    })}>
+      <span className="shrink-0">{icon}</span>
+      <span className="truncate">{label}</span>
+    </span>
   )
 }
