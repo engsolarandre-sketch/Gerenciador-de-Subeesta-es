@@ -66,6 +66,7 @@ export default function ClientsPage() {
   const [responsibles, setResponsibles] = useState<ClientResponsible[]>([])
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [loadingCep, setLoadingCep] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [tab, setTab] = useState<'dados' | 'endereco' | 'responsaveis'>('dados')
 
 
@@ -148,7 +149,7 @@ export default function ClientsPage() {
   }
 
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const errs = validate()
     if (Object.keys(errs).length > 0) { setErrors(errs); setTab('dados'); return }
@@ -178,9 +179,17 @@ export default function ClientsPage() {
       resellerId: form.resellerId,
     }
 
-    if (editing) updateClient(editing.id, payload)
-    else addClient(payload)
-    setOpen(false)
+    setSaving(true)
+    setErrors({})
+    try {
+      if (editing) await updateClient(editing.id, payload)
+      else await addClient(payload)
+      setOpen(false)
+    } catch (error) {
+      setErrors({ submit: error instanceof Error ? error.message : 'Não foi possível salvar o cliente.' })
+    } finally {
+      setSaving(false)
+    }
   }
 
 
@@ -626,11 +635,15 @@ export default function ClientsPage() {
               </div>
 
               {/* Footer fixo */}
-              <div className="flex gap-3 px-5 py-3 border-t bg-gray-50 rounded-b-2xl shrink-0">
-                <button type="submit"
-                  className="flex items-center gap-2 px-5 py-2 rounded-lg text-white text-sm font-medium transition-colors"
+              <div className="flex flex-wrap gap-3 px-5 py-3 border-t bg-gray-50 rounded-b-2xl shrink-0">
+                {errors.submit && (
+                  <p className="w-full text-sm text-red-600" role="alert">{errors.submit}</p>
+                )}
+                <button type="submit" disabled={saving}
+                  className="flex items-center gap-2 px-5 py-2 rounded-lg text-white text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                   style={{ background: 'var(--color-primary)' }}>
-                  {editing ? 'Salvar Alterações' : 'Cadastrar Cliente'}
+                  {saving && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {saving ? 'Salvando...' : editing ? 'Salvar Alterações' : 'Cadastrar Cliente'}
                 </button>
                 <button type="button" onClick={() => setOpen(false)}
                   className="px-5 py-2 rounded-lg border text-sm font-medium text-gray-600 hover:bg-gray-100 transition-colors">

@@ -1,0 +1,8 @@
+# Segredos e configuracoes locais
+.env
+.env.local
+.env.*.local
+
+# Caches gerados localmente
+node_modules/.vite/
+supabase/.temp/

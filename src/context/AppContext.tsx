@@ -201,19 +201,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   const fetchAll = useCallback(async () => {
     setLoading(true)
     try {
-      const [
-        { data: mpData },
-        { data: dsData },
-        { data: stData },
-        { data: tplData },
-        { data: rtData },
-        { data: reData },
-        { data: rcData },
-        { data: clData },
-        { data: crData },
-        { data: prData },
-        { data: sgData },
-      ] = await Promise.all([
+      const responses = await Promise.all([
         supabase.from('macro_phases').select('*').order('order'),
         supabase.from('default_stage_model').select('*').order('order'),
         supabase.from('substation_types').select('*').order('created_at'),
@@ -226,6 +214,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         supabase.from('projects').select('*').order('created_at', { ascending: false }),
         supabase.from('stages').select('*').order('stage_number'),
       ])
+      const queryError = responses.find(response => response.error)?.error
+      if (queryError) throw queryError
+
+      const [
+        { data: mpData },
+        { data: dsData },
+        { data: stData },
+        { data: tplData },
+        { data: rtData },
+        { data: reData },
+        { data: rcData },
+        { data: clData },
+        { data: crData },
+        { data: prData },
+        { data: sgData },
+      ] = responses
 
       const mps = (mpData ?? []).map(dbToMacroPhase)
       const dss = (dsData ?? []).map(dbToDefaultStage)
@@ -245,6 +249,8 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       setResellers(res)
       setClients(cls)
       setProjects(prs)
+    } catch (error) {
+      console.error('Não foi possível carregar os dados do Supabase.', error)
     } finally {
       setLoading(false)
     }
@@ -267,7 +273,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     )
   }
 
-  useEffect(() => { fetchAll() }, [fetchAll])
+  useEffect(() => {
+    void fetchAll()
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(event => {
+      if (event === 'SIGNED_IN' || event === 'INITIAL_SESSION') {
+        window.setTimeout(() => { void fetchAll() }, 0)
+      }
+    })
+    return () => subscription.unsubscribe()
+  }, [fetchAll])
 
   // ── Macro Phases ───────────────────────────────────────────────
   async function addMacroPhase(data: Omit<MacroPhase, 'id'>): Promise<MacroPhase> {
@@ -387,7 +401,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   async function addReseller(data: Omit<Reseller, 'id' | 'createdAt' | 'updatedAt'>): Promise<Reseller> {
     const id = uuid()
     const { contacts, ...rest } = data
-    await supabase.from('resellers').insert({
+    const normalizedCnpj = rest.cnpj?.replace(/\D/g, '')
+    const duplicate = normalizedCnpj
+      ? resellers.find(reseller => reseller.cnpj?.replace(/\D/g, '') === normalizedCnpj)
+      : undefined
+    if (duplicate) {
+      throw new Error(`Já existe um revendedor cadastrado com este CNPJ: ${duplicate.name}.`)
+    }
+
+    const { error } = await supabase.from('resellers').insert({
       id, name: rest.name, cnpj: rest.cnpj ?? null, razao_social: rest.razaoSocial ?? null,
       nome_fantasia: rest.nomeFantasia ?? null, ie: rest.ie ?? null,
       cep: rest.cep ?? null, logradouro: rest.logradouro ?? null, numero: rest.numero ?? null,
@@ -396,10 +418,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       telefone: rest.telefone ?? null, email: rest.email ?? null, site: rest.site ?? null,
       phone: rest.phone ?? null, observacoes: rest.observacoes ?? null, status: rest.status,
     })
+    if (error) throw error
     if (contacts?.length > 0) {
-      await supabase.from('reseller_contacts').insert(
+      const { error: contactsError } = await supabase.from('reseller_contacts').insert(
         contacts.map(c => ({ id: c.id || uuid(), reseller_id: id, name: c.name, role: c.role ?? null, phone: c.phone ?? null, email: c.email ?? null }))
       )
+      if (contactsError) throw contactsError
     }
     const now = new Date().toISOString()
     const reseller: Reseller = { ...data, id, createdAt: now, updatedAt: now }
@@ -435,7 +459,13 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   async function addClient(data: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>): Promise<Client> {
     const id = uuid()
     const { responsibles, ...rest } = data
-    await supabase.from('clients').insert({
+    const normalizedDocument = rest.cpfCnpj.replace(/\D/g, '')
+    const duplicate = clients.find(client => client.cpfCnpj.replace(/\D/g, '') === normalizedDocument)
+    if (duplicate) {
+      throw new Error(`Já existe um cliente cadastrado com este CPF/CNPJ: ${duplicate.name}.`)
+    }
+
+    const { error } = await supabase.from('clients').insert({
       id, reseller_id: rest.resellerId, name: rest.name,
       razao_social: rest.razaoSocial ?? null, nome_fantasia: rest.nomeFantasia ?? null,
       cpf_cnpj: rest.cpfCnpj, email: rest.email ?? null, phone: rest.phone ?? null,
@@ -445,10 +475,12 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       numero_uc: rest.numeroUC ?? null, latitude: rest.latitude ?? null,
       longitude: rest.longitude ?? null, observacoes: rest.observacoes ?? null,
     })
+    if (error) throw error
     if (responsibles?.length > 0) {
-      await supabase.from('client_responsibles').insert(
+      const { error: responsiblesError } = await supabase.from('client_responsibles').insert(
         responsibles.map(r => ({ id: r.id || uuid(), client_id: id, name: r.name, role: r.role ?? null, email: r.email ?? null, cpf: r.cpf ?? null }))
       )
+      if (responsiblesError) throw responsiblesError
     }
     const now = new Date().toISOString()
     const client: Client = { ...data, id, createdAt: now, updatedAt: now }
@@ -457,7 +489,15 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }
   async function updateClient(id: string, data: Omit<Client, 'id' | 'createdAt' | 'updatedAt'>) {
     const { responsibles, ...rest } = data
-    await supabase.from('clients').update({
+    const normalizedDocument = rest.cpfCnpj.replace(/\D/g, '')
+    const duplicate = clients.find(client =>
+      client.id !== id && client.cpfCnpj.replace(/\D/g, '') === normalizedDocument
+    )
+    if (duplicate) {
+      throw new Error(`Já existe um cliente cadastrado com este CPF/CNPJ: ${duplicate.name}.`)
+    }
+
+    const { error } = await supabase.from('clients').update({
       reseller_id: rest.resellerId, name: rest.name,
       razao_social: rest.razaoSocial ?? null, nome_fantasia: rest.nomeFantasia ?? null,
       cpf_cnpj: rest.cpfCnpj, email: rest.email ?? null, phone: rest.phone ?? null,
@@ -468,11 +508,14 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       longitude: rest.longitude ?? null, observacoes: rest.observacoes ?? null,
       updated_at: new Date().toISOString(),
     }).eq('id', id)
-    await supabase.from('client_responsibles').delete().eq('client_id', id)
+    if (error) throw error
+    const { error: deleteResponsiblesError } = await supabase.from('client_responsibles').delete().eq('client_id', id)
+    if (deleteResponsiblesError) throw deleteResponsiblesError
     if (responsibles?.length > 0) {
-      await supabase.from('client_responsibles').insert(
+      const { error: responsiblesError } = await supabase.from('client_responsibles').insert(
         responsibles.map(r => ({ id: r.id || uuid(), client_id: id, name: r.name, role: r.role ?? null, email: r.email ?? null, cpf: r.cpf ?? null }))
       )
+      if (responsiblesError) throw responsiblesError
     }
     setClients(prev => prev.map(c => c.id === id ? { ...c, ...data, updatedAt: new Date().toISOString() } : c))
   }

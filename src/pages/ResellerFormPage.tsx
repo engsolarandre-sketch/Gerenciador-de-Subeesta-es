@@ -43,6 +43,7 @@ export default function ResellerFormPage() {
   const [errors, setErrors] = useState<Record<string, string>>({})
   const [loadingCnpj, setLoadingCnpj] = useState(false)
   const [loadingCep, setLoadingCep] = useState(false)
+  const [saving, setSaving] = useState(false)
   const [cnpjMsg, setCnpjMsg] = useState('')
 
   // ── preenche ao editar ────────────────────────────────────────────────────
@@ -143,7 +144,7 @@ setForm(p => ({
     return e
   }
 
-  function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
     const errs = validate()
     if (Object.keys(errs).length > 0) { setErrors(errs); return }
@@ -171,9 +172,17 @@ setForm(p => ({
       contacts,
     }
 
-    if (isEdit && existing) updateReseller(id, payload)
-    else addReseller(payload)
-    navigate('/resellers')
+    setSaving(true)
+    setErrors({})
+    try {
+      if (isEdit && existing) await updateReseller(id, payload)
+      else await addReseller(payload)
+      navigate('/resellers')
+    } catch (error) {
+      setErrors({ submit: error instanceof Error ? error.message : 'Não foi possível salvar o revendedor.' })
+    } finally {
+      setSaving(false)
+    }
   }
 
   // ── estilos ───────────────────────────────────────────────────────────────
@@ -438,12 +447,15 @@ setForm(p => ({
         </div>
 
         {/* ── Botões ── */}
-        <div className="flex gap-3 pb-6">
-          <button type="submit"
-            className="flex items-center gap-2 px-6 py-2.5 rounded-lg text-white text-sm font-medium transition-colors"
+        <div className="flex flex-wrap items-center gap-3 pb-6">
+          {errors.submit && (
+            <p className="w-full text-sm text-red-600" role="alert">{errors.submit}</p>
+          )}
+          <button type="submit" disabled={saving}
+            className="flex items-center gap-2 px-6 py-2.5 rounded-lg text-white text-sm font-medium transition-colors disabled:cursor-not-allowed disabled:opacity-60"
             style={{ background: 'var(--color-primary)' }}>
-            <Save className="w-4 h-4" />
-            {isEdit ? 'Salvar Alterações' : 'Cadastrar Revendedor'}
+            {saving ? <Loader2 className="w-4 h-4 animate-spin" /> : <Save className="w-4 h-4" />}
+            {saving ? 'Salvando...' : isEdit ? 'Salvar Alterações' : 'Cadastrar Revendedor'}
           </button>
           <button type="button" onClick={() => navigate('/resellers')}
             className="px-6 py-2.5 rounded-lg border text-sm font-medium text-gray-600 hover:bg-gray-50 transition-colors">
