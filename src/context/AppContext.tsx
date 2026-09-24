@@ -161,7 +161,9 @@ interface AppContextType {
   loading: boolean
   appUsers: AppUser[]
   inviteAppUser: (data: Pick<AppUser, 'name' | 'email' | 'role'>) => Promise<void>
-  updateAppUser: (id: string, data: Partial<Pick<AppUser, 'name' | 'role' | 'active' | 'notifyStageChanges'>>) => Promise<void>
+  updateAppUser: (id: string, data: Partial<Pick<AppUser, 'name' | 'email' | 'role' | 'active' | 'notifyStageChanges'>>) => Promise<void>
+  resendAppUserInvite: (id: string) => Promise<string>
+  deleteAppUser: (id: string) => Promise<void>
   macroPhases: MacroPhase[]
   addMacroPhase: (data: Omit<MacroPhase, 'id'>) => Promise<MacroPhase>
   updateMacroPhase: (id: string, data: Partial<Omit<MacroPhase, 'id'>>) => Promise<void>
@@ -305,31 +307,49 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   }, [fetchAll])
 
   // ── Usuários internos ──────────────────────────────────────────
+  async function manageUser(body: Record<string, unknown>) {
+    const { data, error } = await supabase.functions.invoke('manage-users', { body })
+    if (error) {
+      let message = error.message
+      const context = (error as { context?: Response }).context
+      if (context) {
+        try {
+          const payload = await context.clone().json()
+          if (payload?.error) message = payload.error
+        } catch {
+          // Mantém a mensagem original quando a resposta não contém JSON.
+        }
+      }
+      throw new Error(message)
+    }
+    if (data?.error) throw new Error(data.error)
+    return data
+  }
+
   async function inviteAppUser(data: Pick<AppUser, 'name' | 'email' | 'role'>) {
-    const { data: response, error } = await supabase.functions.invoke('manage-users', {
-      body: { action: 'invite', ...data },
-    })
-    if (error) throw error
-    if (response?.error) throw new Error(response.error)
+    const response = await manageUser({ action: 'invite', ...data })
     if (response?.user) setAppUsers(prev => [...prev, dbToAppUser(response.user)].sort((a, b) => a.name.localeCompare(b.name)))
   }
 
   async function updateAppUser(
     id: string,
-    data: Partial<Pick<AppUser, 'name' | 'role' | 'active' | 'notifyStageChanges'>>,
+    data: Partial<Pick<AppUser, 'name' | 'email' | 'role' | 'active' | 'notifyStageChanges'>>,
   ) {
-    const update = {
-      name: data.name,
-      role: data.role,
-      active: data.active,
-      notify_stage_changes: data.notifyStageChanges,
-      updated_at: new Date().toISOString(),
+    const response = await manageUser({ action: 'update', id, ...data })
+    if (response?.user) {
+      const updated = dbToAppUser(response.user)
+      setAppUsers(prev => prev.map(user => user.id === id ? updated : user).sort((a, b) => a.name.localeCompare(b.name)))
     }
-    const { error } = await supabase.from('app_users').update(update).eq('id', id)
-    if (error) throw error
-    setAppUsers(prev => prev.map(user => user.id === id
-      ? { ...user, ...data, updatedAt: new Date().toISOString() }
-      : user))
+  }
+
+  async function resendAppUserInvite(id: string) {
+    const response = await manageUser({ action: 'resend-invite', id })
+    return response?.message ?? 'Convite reenviado.'
+  }
+
+  async function deleteAppUser(id: string) {
+    await manageUser({ action: 'delete', id })
+    setAppUsers(prev => prev.filter(user => user.id !== id))
   }
 
   // ── Macro Phases ───────────────────────────────────────────────
@@ -699,7 +719,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
   return (
     <AppContext.Provider value={{
       loading,
-      appUsers, inviteAppUser, updateAppUser,
+      appUsers, inviteAppUser, updateAppUser, resendAppUserInvite, deleteAppUser,
       macroPhases, addMacroPhase, updateMacroPhase, deleteMacroPhase,
       defaultStageModel, addDefaultStage, updateDefaultStage, deleteDefaultStage,
       substationTypes, addSubstationType, updateSubstationType, deleteSubstationType,

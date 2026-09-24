@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { Plus, Pencil, Trash2, ChevronDown, ChevronUp, AlertCircle, Bell, Mail, ShieldCheck, UserPlus } from 'lucide-react'
+import { Plus, Pencil, Trash2, ChevronDown, ChevronUp, AlertCircle, Bell, Mail, ShieldCheck, UserPlus, RefreshCw } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import Button from '../components/Button'
 import Modal from '../components/Modal'
@@ -29,7 +29,7 @@ export default function SettingsPage() {
     substationTypes, addSubstationType, updateSubstationType, deleteSubstationType,
     addStageToType, updateStageInType, deleteStageFromType,
     requestTypes, addRequestType, updateRequestType, deleteRequestType,
-    appUsers, inviteAppUser, updateAppUser,
+    appUsers, inviteAppUser, updateAppUser, resendAppUserInvite, deleteAppUser,
   } = useApp()
 
   const [activeTab, setActiveTab] = useState<'macrophases' | 'model' | 'types' | 'requesttypes' | 'users'>('macrophases')
@@ -108,21 +108,36 @@ export default function SettingsPage() {
         />
       )}
       {activeTab === 'users' && (
-        <UsersTab users={appUsers} onInvite={inviteAppUser} onUpdate={updateAppUser} />
+        <UsersTab
+          users={appUsers}
+          onInvite={inviteAppUser}
+          onUpdate={updateAppUser}
+          onResend={resendAppUserInvite}
+          onDelete={deleteAppUser}
+        />
       )}
     </div>
   )
 }
 
-function UsersTab({ users, onInvite, onUpdate }: {
+function UsersTab({ users, onInvite, onUpdate, onResend, onDelete }: {
   users: AppUser[]
   onInvite: (data: Pick<AppUser, 'name' | 'email' | 'role'>) => Promise<void>
-  onUpdate: (id: string, data: Partial<Pick<AppUser, 'name' | 'role' | 'active' | 'notifyStageChanges'>>) => Promise<void>
+  onUpdate: (id: string, data: Partial<Pick<AppUser, 'name' | 'email' | 'role' | 'active' | 'notifyStageChanges'>>) => Promise<void>
+  onResend: (id: string) => Promise<string>
+  onDelete: (id: string) => Promise<void>
 }) {
   const [inviteOpen, setInviteOpen] = useState(false)
+  const [editing, setEditing] = useState<AppUser | null>(null)
   const [form, setForm] = useState({ name: '', email: '', role: 'member' as AppUser['role'] })
+  const [editForm, setEditForm] = useState({
+    name: '', email: '', role: 'member' as AppUser['role'],
+    active: true, notifyStageChanges: true,
+  })
   const [saving, setSaving] = useState(false)
+  const [busyId, setBusyId] = useState<string | null>(null)
   const [error, setError] = useState('')
+  const [message, setMessage] = useState('')
 
   async function handleInvite(event: React.FormEvent) {
     event.preventDefault()
@@ -131,6 +146,7 @@ function UsersTab({ users, onInvite, onUpdate }: {
     try {
       await onInvite({ name: form.name.trim(), email: form.email.trim(), role: form.role })
       setInviteOpen(false)
+      setMessage(`Convite enviado para ${form.email.trim()}.`)
       setForm({ name: '', email: '', role: 'member' })
     } catch (inviteError) {
       setError(inviteError instanceof Error ? inviteError.message : 'Não foi possível convidar o usuário.')
@@ -139,11 +155,66 @@ function UsersTab({ users, onInvite, onUpdate }: {
     }
   }
 
-  async function updateUser(id: string, data: Parameters<typeof onUpdate>[1]) {
+  function openEdit(user: AppUser) {
+    setError('')
+    setMessage('')
+    setEditing(user)
+    setEditForm({
+      name: user.name,
+      email: user.email,
+      role: user.role,
+      active: user.active,
+      notifyStageChanges: user.notifyStageChanges,
+    })
+  }
+
+  async function handleEdit(event: React.FormEvent) {
+    event.preventDefault()
+    if (!editing) return
+    setError('')
+    setSaving(true)
     try {
-      await onUpdate(id, data)
+      await onUpdate(editing.id, {
+        name: editForm.name.trim(),
+        email: editForm.email.trim(),
+        role: editForm.role,
+        active: editForm.active,
+        notifyStageChanges: editForm.notifyStageChanges,
+      })
+      setEditing(null)
+      setMessage('Usuário atualizado com sucesso.')
     } catch (updateError) {
-      alert(updateError instanceof Error ? updateError.message : 'Não foi possível atualizar o usuário.')
+      setError(updateError instanceof Error ? updateError.message : 'Não foi possível atualizar o usuário.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function resendInvite(user: AppUser) {
+    setError('')
+    setMessage('')
+    setBusyId(user.id)
+    try {
+      setMessage(await onResend(user.id))
+    } catch (resendError) {
+      setError(resendError instanceof Error ? resendError.message : 'Não foi possível reenviar o convite.')
+    } finally {
+      setBusyId(null)
+    }
+  }
+
+  async function deleteUser(user: AppUser) {
+    if (!window.confirm(`Excluir permanentemente o usuário ${user.name}? Esta ação removerá também o acesso ao sistema.`)) return
+    setError('')
+    setMessage('')
+    setBusyId(user.id)
+    try {
+      await onDelete(user.id)
+      setMessage('Usuário excluído.')
+    } catch (deleteError) {
+      setError(deleteError instanceof Error ? deleteError.message : 'Não foi possível excluir o usuário.')
+    } finally {
+      setBusyId(null)
     }
   }
 
@@ -156,7 +227,7 @@ function UsersTab({ users, onInvite, onUpdate }: {
         <div>
           <p className="text-sm font-semibold text-cyan-950">Destinatários das alterações de etapas</p>
           <p className="mt-1 text-sm leading-6 text-cyan-800">
-            Usuários ativos com notificações habilitadas recebem as atualizações. O revendedor não precisa de usuário: ele recebe no e-mail cadastrado em sua ficha.
+            Usuários ativos com notificações habilitadas recebem as atualizações. O revendedor recebe no e-mail cadastrado em sua ficha.
           </p>
         </div>
       </div>
@@ -166,53 +237,42 @@ function UsersTab({ users, onInvite, onUpdate }: {
           <h2 className="text-base font-semibold text-gray-900">Usuários internos</h2>
           <p className="mt-1 text-sm text-gray-500">{activeUsers.length} ativo{activeUsers.length === 1 ? '' : 's'} · {activeUsers.filter(user => user.notifyStageChanges).length} recebendo notificações</p>
         </div>
-        <Button onClick={() => { setError(''); setInviteOpen(true) }}><UserPlus size={15} /> Convidar usuário</Button>
+        <Button onClick={() => { setError(''); setMessage(''); setInviteOpen(true) }}><UserPlus size={15} /> Convidar usuário</Button>
       </div>
 
-      <div className="overflow-hidden border bg-white">
-        <div className="grid grid-cols-12 gap-3 border-b bg-gray-50 px-5 py-3 text-xs font-semibold uppercase text-gray-400">
-          <div className="col-span-5">Usuário</div>
+      {message && <div className="border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800" role="status">{message}</div>}
+      {error && !inviteOpen && !editing && <div className="border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700" role="alert">{error}</div>}
+
+      <div className="overflow-x-auto border bg-white">
+        <div className="grid min-w-[760px] grid-cols-12 gap-3 border-b bg-gray-50 px-5 py-3 text-xs font-semibold uppercase text-gray-400">
+          <div className="col-span-4">Usuário</div>
           <div className="col-span-2">Perfil</div>
-          <div className="col-span-3">Notificações</div>
-          <div className="col-span-2 text-right">Status</div>
+          <div className="col-span-2">Notificações</div>
+          <div className="col-span-1">Status</div>
+          <div className="col-span-3 text-right">Ações</div>
         </div>
         {users.map(user => (
-          <div key={user.id} className="grid grid-cols-12 items-center gap-3 border-b px-5 py-4 text-sm last:border-b-0">
-            <div className="col-span-5 min-w-0">
+          <div key={user.id} className="grid min-w-[760px] grid-cols-12 items-center gap-3 border-b px-5 py-4 text-sm last:border-b-0">
+            <div className="col-span-4 min-w-0">
               <p className="truncate font-medium text-gray-900">{user.name}</p>
               <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-gray-500"><Mail size={12} /> {user.email}</p>
             </div>
-            <div className="col-span-2">
-              <select
-                value={user.role}
-                onChange={event => updateUser(user.id, { role: event.target.value as AppUser['role'] })}
-                className="w-full border bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand/30"
-              >
-                <option value="member">Usuário</option>
-                <option value="admin">Administrador</option>
-              </select>
+            <div className="col-span-2 text-xs text-gray-600">{user.role === 'admin' ? 'Administrador' : 'Usuário'}</div>
+            <div className="col-span-2 text-xs text-gray-600">
+              {user.notifyStageChanges && user.active ? 'Recebe e-mails' : 'Desativadas'}
             </div>
-            <div className="col-span-3">
-              <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-gray-600">
-                <input
-                  type="checkbox"
-                  checked={user.notifyStageChanges}
-                  disabled={!user.active}
-                  onChange={event => updateUser(user.id, { notifyStageChanges: event.target.checked })}
-                  className="h-4 w-4 accent-teal-700"
-                />
-                Receber por e-mail
-              </label>
+            <div className="col-span-1">
+              <span className={clsx('text-xs font-medium', user.active ? 'text-emerald-700' : 'text-gray-500')}>{user.active ? 'Ativo' : 'Inativo'}</span>
             </div>
-            <div className="col-span-2 text-right">
-              <button
-                onClick={() => updateUser(user.id, { active: !user.active })}
-                className={clsx(
-                  'border px-2.5 py-1 text-xs font-medium transition-colors',
-                  user.active ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-gray-50 text-gray-500'
-                )}
-              >
-                {user.active ? 'Ativo' : 'Inativo'}
+            <div className="col-span-3 flex items-center justify-end gap-1">
+              <button type="button" onClick={() => resendInvite(user)} disabled={busyId === user.id} title="Reenviar convite" className="rounded-md p-2 text-gray-500 hover:bg-cyan-50 hover:text-cyan-800 disabled:opacity-40">
+                <RefreshCw size={16} className={busyId === user.id ? 'animate-spin' : ''} />
+              </button>
+              <button type="button" onClick={() => openEdit(user)} title="Editar usuário" className="rounded-md p-2 text-gray-500 hover:bg-gray-100 hover:text-gray-800">
+                <Pencil size={16} />
+              </button>
+              <button type="button" onClick={() => deleteUser(user)} disabled={busyId === user.id} title="Excluir usuário" className="rounded-md p-2 text-gray-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-40">
+                <Trash2 size={16} />
               </button>
             </div>
           </div>
@@ -222,11 +282,11 @@ function UsersTab({ users, onInvite, onUpdate }: {
       <div className="grid gap-3 md:grid-cols-2">
         <div className="border bg-white p-4">
           <div className="flex items-center gap-2 text-sm font-semibold text-gray-900"><ShieldCheck size={16} className="text-teal-700" /> Administradores</div>
-          <p className="mt-2 text-xs leading-5 text-gray-500">Podem convidar usuários e alterar perfis, status e preferências de notificação.</p>
+          <p className="mt-2 text-xs leading-5 text-gray-500">Podem convidar, editar e excluir usuários, além de controlar as notificações.</p>
         </div>
         <div className="border bg-white p-4">
-          <div className="flex items-center gap-2 text-sm font-semibold text-gray-900"><Bell size={16} className="text-amber-600" /> Histórico de envios</div>
-          <p className="mt-2 text-xs leading-5 text-gray-500">Cada tentativa fica registrada no Supabase com destinatários, alterações e resultado do Resend.</p>
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-900"><Bell size={16} className="text-amber-600" /> Entrega pelo Resend</div>
+          <p className="mt-2 text-xs leading-5 text-gray-500">Convites, reenvios e recuperações agora usam o mesmo serviço das notificações de etapas.</p>
         </div>
       </div>
 
@@ -256,10 +316,44 @@ function UsersTab({ users, onInvite, onUpdate }: {
           </form>
         </Modal>
       )}
+
+      {editing && (
+        <Modal title="Editar usuário" onClose={() => setEditing(null)}>
+          <form onSubmit={handleEdit} className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Nome</label>
+              <input required value={editForm.name} onChange={event => setEditForm(current => ({ ...current, name: event.target.value }))} className="w-full border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">E-mail</label>
+              <input required type="email" value={editForm.email} onChange={event => setEditForm(current => ({ ...current, email: event.target.value }))} className="w-full border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Perfil</label>
+              <select value={editForm.role} onChange={event => setEditForm(current => ({ ...current, role: event.target.value as AppUser['role'] }))} className="w-full border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30">
+                <option value="member">Usuário</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </div>
+            <label className="flex items-center gap-3 text-sm text-gray-700">
+              <input type="checkbox" checked={editForm.active} onChange={event => setEditForm(current => ({ ...current, active: event.target.checked }))} className="h-4 w-4 accent-teal-700" />
+              Acesso ativo
+            </label>
+            <label className="flex items-center gap-3 text-sm text-gray-700">
+              <input type="checkbox" checked={editForm.notifyStageChanges} disabled={!editForm.active} onChange={event => setEditForm(current => ({ ...current, notifyStageChanges: event.target.checked }))} className="h-4 w-4 accent-teal-700" />
+              Receber alterações de etapas por e-mail
+            </label>
+            {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+            <div className="flex gap-2 pt-1">
+              <Button type="submit" disabled={saving}>{saving ? 'Salvando...' : 'Salvar alterações'}</Button>
+              <Button type="button" variant="ghost" onClick={() => setEditing(null)}>Cancelar</Button>
+            </div>
+          </form>
+        </Modal>
+      )}
     </div>
   )
 }
-
 // ─── Aba Fases Macro ──────────────────────────────────────────────────────────
 function MacroPhasesTab({
   macroPhases, onAdd, onUpdate, onDelete

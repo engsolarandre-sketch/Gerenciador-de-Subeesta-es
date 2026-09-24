@@ -16,6 +16,7 @@ import ResellerFormPage from './pages/ResellerFormPage'
 import SettingsPage from './pages/SettingsPage'
 import ResellerPortalPage from './pages/ResellerPortalPage'
 import ResellerPortalPublicPage from './pages/ResellerPortalPublicPage'
+import ResetPasswordPage from './pages/ResetPasswordPage'
 
 export default function App() {
   const [session, setSession] = useState<Session | null | undefined>(undefined)
@@ -45,6 +46,7 @@ export default function App() {
     <Routes>
       {/* Portal público do revendedor — sempre acessível */}
       <Route path="/portal/:resellerId" element={<ResellerPortalPublicPage />} />
+      <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
 
       {/* Login — redireciona para home se já autenticado */}
       <Route path="/login" element={
