@@ -3,7 +3,8 @@ import { v4 as uuid } from 'uuid'
 import { supabase } from '../lib/supabase'
 import type {
   Client, Project, Reseller, Stage, SubstationTypeConfig,
-  StageTemplate, DefaultStageTemplate, MacroPhase, RequestType
+  StageTemplate, DefaultStageTemplate, MacroPhase, RequestType,
+  AppUser, StageNotificationResult
 } from '../types'
 
 // ─── Defaults (usados apenas para seed inicial se banco vazio) ────
@@ -48,6 +49,18 @@ function dbToDefaultStage(r: any): DefaultStageTemplate {
 }
 function dbToRequestType(r: any): RequestType {
   return { id: r.id, name: r.name, createdAt: r.created_at }
+}
+function dbToAppUser(r: any): AppUser {
+  return {
+    id: r.id,
+    name: r.name,
+    email: r.email,
+    role: r.role as AppUser['role'],
+    active: r.active,
+    notifyStageChanges: r.notify_stage_changes,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  }
 }
 function dbToResellerContact(r: any) {
   return { id: r.id, name: r.name, role: r.role ?? undefined, phone: r.phone ?? undefined, email: r.email ?? undefined }
@@ -146,6 +159,9 @@ type AddProjectData = {
 // ─── Context type ─────────────────────────────────────────────────
 interface AppContextType {
   loading: boolean
+  appUsers: AppUser[]
+  inviteAppUser: (data: Pick<AppUser, 'name' | 'email' | 'role'>) => Promise<void>
+  updateAppUser: (id: string, data: Partial<Pick<AppUser, 'name' | 'role' | 'active' | 'notifyStageChanges'>>) => Promise<void>
   macroPhases: MacroPhase[]
   addMacroPhase: (data: Omit<MacroPhase, 'id'>) => Promise<MacroPhase>
   updateMacroPhase: (id: string, data: Partial<Omit<MacroPhase, 'id'>>) => Promise<void>
@@ -179,9 +195,9 @@ interface AppContextType {
     'title' | 'substationTypeId' | 'transformerKva' | 'concessionaria' |
     'startDate' | 'plannedEndDate' | 'actualEndDate' | 'requestTypeId'>>) => Promise<void>
   deleteProject: (id: string) => Promise<void>
-  updateProjectStage: (projectId: string, stageId: string, data: Partial<Stage>) => Promise<void>
+  updateProjectStage: (projectId: string, stageId: string, data: Partial<Stage>) => Promise<StageNotificationResult>
   updateProjectStatus: (projectId: string, status: Project['status']) => Promise<void>
-  advanceStage: (projectId: string) => Promise<void>
+  advanceStage: (projectId: string) => Promise<StageNotificationResult>
 }
 
 const AppContext = createContext<AppContextType | null>(null)
@@ -189,6 +205,7 @@ const AppContext = createContext<AppContextType | null>(null)
 // ─── Provider ────────────────────────────────────────────────────
 export function AppProvider({ children }: { children: React.ReactNode }) {
   const [loading,           setLoading]           = useState(true)
+  const [appUsers,          setAppUsers]          = useState<AppUser[]>([])
   const [macroPhases,       setMacroPhases]        = useState<MacroPhase[]>([])
   const [defaultStageModel, setDefaultStageModel]  = useState<DefaultStageTemplate[]>([])
   const [substationTypes,   setSubstationTypes]    = useState<SubstationTypeConfig[]>([])
@@ -202,6 +219,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     setLoading(true)
     try {
       const responses = await Promise.all([
+        supabase.from('app_users').select('*').order('name'),
         supabase.from('macro_phases').select('*').order('order'),
         supabase.from('default_stage_model').select('*').order('order'),
         supabase.from('substation_types').select('*').order('created_at'),
@@ -218,6 +236,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       if (queryError) throw queryError
 
       const [
+        { data: auData },
         { data: mpData },
         { data: dsData },
         { data: stData },
@@ -231,6 +250,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
         { data: sgData },
       ] = responses
 
+      const aus = (auData ?? []).map(dbToAppUser)
       const mps = (mpData ?? []).map(dbToMacroPhase)
       const dss = (dsData ?? []).map(dbToDefaultStage)
       const sts = (stData ?? []).map(r => dbToSubstationType(r, tplData ?? []))
@@ -242,6 +262,7 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       // Seed defaults se banco vazio
       if (mps.length === 0) await seedDefaults()
 
+      setAppUsers(aus)
       setMacroPhases(mps.length > 0 ? mps : DEFAULT_MACRO_PHASES)
       setDefaultStageModel(dss.length > 0 ? dss : DEFAULT_STAGE_MODEL)
       setSubstationTypes(sts)
@@ -282,6 +303,34 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     })
     return () => subscription.unsubscribe()
   }, [fetchAll])
+
+  // ── Usuários internos ──────────────────────────────────────────
+  async function inviteAppUser(data: Pick<AppUser, 'name' | 'email' | 'role'>) {
+    const { data: response, error } = await supabase.functions.invoke('manage-users', {
+      body: { action: 'invite', ...data },
+    })
+    if (error) throw error
+    if (response?.error) throw new Error(response.error)
+    if (response?.user) setAppUsers(prev => [...prev, dbToAppUser(response.user)].sort((a, b) => a.name.localeCompare(b.name)))
+  }
+
+  async function updateAppUser(
+    id: string,
+    data: Partial<Pick<AppUser, 'name' | 'role' | 'active' | 'notifyStageChanges'>>,
+  ) {
+    const update = {
+      name: data.name,
+      role: data.role,
+      active: data.active,
+      notify_stage_changes: data.notifyStageChanges,
+      updated_at: new Date().toISOString(),
+    }
+    const { error } = await supabase.from('app_users').update(update).eq('id', id)
+    if (error) throw error
+    setAppUsers(prev => prev.map(user => user.id === id
+      ? { ...user, ...data, updatedAt: new Date().toISOString() }
+      : user))
+  }
 
   // ── Macro Phases ───────────────────────────────────────────────
   async function addMacroPhase(data: Omit<MacroPhase, 'id'>): Promise<MacroPhase> {
@@ -602,27 +651,22 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
     await supabase.from('projects').delete().eq('id', id)
     setProjects(prev => prev.filter(p => p.id !== id))
   }
-  async function updateProjectStage(projectId: string, stageId: string, data: Partial<Stage>) {
+  async function updateProjectStage(projectId: string, stageId: string, data: Partial<Stage>): Promise<StageNotificationResult> {
+    const { data: response, error } = await supabase.functions.invoke('send-stage-notification', {
+      body: { projectId, stageId, changes: data },
+    })
+    if (error) throw error
+    if (response?.error) throw new Error(response.error)
+    if (!response?.stage || !response?.notification) throw new Error('Resposta inválida ao atualizar a etapa.')
+
+    const updatedStage = dbToStage(response.stage)
     const now = new Date().toISOString()
-    const stageUpdate: any = {
-      status: data.status, notes: data.notes ?? null, protocol: data.protocol ?? null,
-      planned_start_date: data.plannedStartDate ?? null, planned_end_date: data.plannedEndDate ?? null,
-      updated_at: now,
-    }
-    if (data.status === 'COMPLETED') stageUpdate.completed_at = now
-    if (data.status === 'IN_PROGRESS') stageUpdate.actual_start_date = now
-    await supabase.from('stages').update(stageUpdate).eq('id', stageId)
     setProjects(prev => prev.map(p => {
       if (p.id !== projectId) return p
-      const stages = p.stages.map(s => {
-        if (s.id !== stageId) return s
-        const updated = { ...s, ...data }
-        if (data.status === 'COMPLETED' && !s.completedAt)       updated.completedAt     = now
-        if (data.status === 'IN_PROGRESS' && !s.actualStartDate) updated.actualStartDate = now
-        return updated
-      })
+      const stages = p.stages.map(s => s.id === stageId ? updatedStage : s)
       return { ...p, stages, updatedAt: now }
     }))
+    return response.notification as StageNotificationResult
   }
   async function updateProjectStatus(projectId: string, status: Project['status']) {
     const now = new Date().toISOString()
@@ -636,17 +680,26 @@ export function AppProvider({ children }: { children: React.ReactNode }) {
       return updated
     }))
   }
-  async function advanceStage(projectId: string) {
+  async function advanceStage(projectId: string): Promise<StageNotificationResult> {
     const project = projects.find(p => p.id === projectId)
-    if (!project) return
+    if (!project) throw new Error('Projeto não encontrado.')
     const next = Math.min(project.currentStage + 1, project.stages.length)
-    await supabase.from('projects').update({ current_stage: next, updated_at: new Date().toISOString() }).eq('id', projectId)
+    if (next === project.currentStage) {
+      return { status: 'skipped', sent: 0, failed: 0, message: 'O projeto já está na última etapa.' }
+    }
+    const now = new Date().toISOString()
+    const { error } = await supabase.from('projects').update({ current_stage: next, updated_at: now }).eq('id', projectId)
+    if (error) throw error
     setProjects(prev => prev.map(p => p.id === projectId ? { ...p, currentStage: next, updatedAt: new Date().toISOString() } : p))
+    const nextStage = project.stages.find(stage => stage.stageNumber === next)
+    if (!nextStage) return { status: 'skipped', sent: 0, failed: 0, message: 'Etapa avançada sem notificação.' }
+    return updateProjectStage(projectId, nextStage.id, { status: 'IN_PROGRESS' })
   }
 
   return (
     <AppContext.Provider value={{
       loading,
+      appUsers, inviteAppUser, updateAppUser,
       macroPhases, addMacroPhase, updateMacroPhase, deleteMacroPhase,
       defaultStageModel, addDefaultStage, updateDefaultStage, deleteDefaultStage,
       substationTypes, addSubstationType, updateSubstationType, deleteSubstationType,

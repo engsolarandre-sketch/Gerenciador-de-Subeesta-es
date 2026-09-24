@@ -1,9 +1,9 @@
 import { useState } from 'react'
-import { Plus, Pencil, Trash2, ChevronDown, ChevronUp, AlertCircle } from 'lucide-react'
+import { Plus, Pencil, Trash2, ChevronDown, ChevronUp, AlertCircle, Bell, Mail, ShieldCheck, UserPlus } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import Button from '../components/Button'
 import Modal from '../components/Modal'
-import type { DefaultStageTemplate, StageTemplate, SubstationTypeConfig, MacroPhase } from '../types'
+import type { DefaultStageTemplate, StageTemplate, SubstationTypeConfig, MacroPhase, AppUser } from '../types'
 import clsx from 'clsx'
 
 const EMPTY_STAGE = { order: 1, title: '', description: '', defaultDurationDays: 7, macroPhaseId: '' }
@@ -29,15 +29,17 @@ export default function SettingsPage() {
     substationTypes, addSubstationType, updateSubstationType, deleteSubstationType,
     addStageToType, updateStageInType, deleteStageFromType,
     requestTypes, addRequestType, updateRequestType, deleteRequestType,
+    appUsers, inviteAppUser, updateAppUser,
   } = useApp()
 
-  const [activeTab, setActiveTab] = useState<'macrophases' | 'model' | 'types' | 'requesttypes'>('macrophases')
+  const [activeTab, setActiveTab] = useState<'macrophases' | 'model' | 'types' | 'requesttypes' | 'users'>('macrophases')
 
   const tabs: { key: typeof activeTab; label: string }[] = [
     { key: 'macrophases',  label: 'Fases Macro' },
     { key: 'model',        label: 'Modelo Padrão de Atividades' },
     { key: 'types',        label: 'Tipos de Subestação' },
     { key: 'requesttypes', label: 'Tipos de Solicitação' },
+    { key: 'users',        label: 'Usuários e notificações' },
   ]
 
   return (
@@ -104,6 +106,155 @@ export default function SettingsPage() {
           onUpdate={updateRequestType}
           onDelete={deleteRequestType}
         />
+      )}
+      {activeTab === 'users' && (
+        <UsersTab users={appUsers} onInvite={inviteAppUser} onUpdate={updateAppUser} />
+      )}
+    </div>
+  )
+}
+
+function UsersTab({ users, onInvite, onUpdate }: {
+  users: AppUser[]
+  onInvite: (data: Pick<AppUser, 'name' | 'email' | 'role'>) => Promise<void>
+  onUpdate: (id: string, data: Partial<Pick<AppUser, 'name' | 'role' | 'active' | 'notifyStageChanges'>>) => Promise<void>
+}) {
+  const [inviteOpen, setInviteOpen] = useState(false)
+  const [form, setForm] = useState({ name: '', email: '', role: 'member' as AppUser['role'] })
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState('')
+
+  async function handleInvite(event: React.FormEvent) {
+    event.preventDefault()
+    setError('')
+    setSaving(true)
+    try {
+      await onInvite({ name: form.name.trim(), email: form.email.trim(), role: form.role })
+      setInviteOpen(false)
+      setForm({ name: '', email: '', role: 'member' })
+    } catch (inviteError) {
+      setError(inviteError instanceof Error ? inviteError.message : 'Não foi possível convidar o usuário.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  async function updateUser(id: string, data: Parameters<typeof onUpdate>[1]) {
+    try {
+      await onUpdate(id, data)
+    } catch (updateError) {
+      alert(updateError instanceof Error ? updateError.message : 'Não foi possível atualizar o usuário.')
+    }
+  }
+
+  const activeUsers = users.filter(user => user.active)
+
+  return (
+    <div className="space-y-5">
+      <div className="flex flex-col gap-3 border border-cyan-200 bg-cyan-50 p-4 sm:flex-row sm:items-start">
+        <Bell size={18} className="mt-0.5 shrink-0 text-cyan-700" />
+        <div>
+          <p className="text-sm font-semibold text-cyan-950">Destinatários das alterações de etapas</p>
+          <p className="mt-1 text-sm leading-6 text-cyan-800">
+            Usuários ativos com notificações habilitadas recebem as atualizações. O revendedor não precisa de usuário: ele recebe no e-mail cadastrado em sua ficha.
+          </p>
+        </div>
+      </div>
+
+      <div className="flex items-end justify-between gap-4">
+        <div>
+          <h2 className="text-base font-semibold text-gray-900">Usuários internos</h2>
+          <p className="mt-1 text-sm text-gray-500">{activeUsers.length} ativo{activeUsers.length === 1 ? '' : 's'} · {activeUsers.filter(user => user.notifyStageChanges).length} recebendo notificações</p>
+        </div>
+        <Button onClick={() => { setError(''); setInviteOpen(true) }}><UserPlus size={15} /> Convidar usuário</Button>
+      </div>
+
+      <div className="overflow-hidden border bg-white">
+        <div className="grid grid-cols-12 gap-3 border-b bg-gray-50 px-5 py-3 text-xs font-semibold uppercase text-gray-400">
+          <div className="col-span-5">Usuário</div>
+          <div className="col-span-2">Perfil</div>
+          <div className="col-span-3">Notificações</div>
+          <div className="col-span-2 text-right">Status</div>
+        </div>
+        {users.map(user => (
+          <div key={user.id} className="grid grid-cols-12 items-center gap-3 border-b px-5 py-4 text-sm last:border-b-0">
+            <div className="col-span-5 min-w-0">
+              <p className="truncate font-medium text-gray-900">{user.name}</p>
+              <p className="mt-0.5 flex items-center gap-1 truncate text-xs text-gray-500"><Mail size={12} /> {user.email}</p>
+            </div>
+            <div className="col-span-2">
+              <select
+                value={user.role}
+                onChange={event => updateUser(user.id, { role: event.target.value as AppUser['role'] })}
+                className="w-full border bg-white px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-brand/30"
+              >
+                <option value="member">Usuário</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </div>
+            <div className="col-span-3">
+              <label className="inline-flex cursor-pointer items-center gap-2 text-xs text-gray-600">
+                <input
+                  type="checkbox"
+                  checked={user.notifyStageChanges}
+                  disabled={!user.active}
+                  onChange={event => updateUser(user.id, { notifyStageChanges: event.target.checked })}
+                  className="h-4 w-4 accent-teal-700"
+                />
+                Receber por e-mail
+              </label>
+            </div>
+            <div className="col-span-2 text-right">
+              <button
+                onClick={() => updateUser(user.id, { active: !user.active })}
+                className={clsx(
+                  'border px-2.5 py-1 text-xs font-medium transition-colors',
+                  user.active ? 'border-emerald-200 bg-emerald-50 text-emerald-700' : 'border-gray-200 bg-gray-50 text-gray-500'
+                )}
+              >
+                {user.active ? 'Ativo' : 'Inativo'}
+              </button>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      <div className="grid gap-3 md:grid-cols-2">
+        <div className="border bg-white p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-900"><ShieldCheck size={16} className="text-teal-700" /> Administradores</div>
+          <p className="mt-2 text-xs leading-5 text-gray-500">Podem convidar usuários e alterar perfis, status e preferências de notificação.</p>
+        </div>
+        <div className="border bg-white p-4">
+          <div className="flex items-center gap-2 text-sm font-semibold text-gray-900"><Bell size={16} className="text-amber-600" /> Histórico de envios</div>
+          <p className="mt-2 text-xs leading-5 text-gray-500">Cada tentativa fica registrada no Supabase com destinatários, alterações e resultado do Resend.</p>
+        </div>
+      </div>
+
+      {inviteOpen && (
+        <Modal title="Convidar usuário" onClose={() => setInviteOpen(false)}>
+          <form onSubmit={handleInvite} className="space-y-4">
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Nome</label>
+              <input required value={form.name} onChange={event => setForm(current => ({ ...current, name: event.target.value }))} className="w-full border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">E-mail</label>
+              <input required type="email" value={form.email} onChange={event => setForm(current => ({ ...current, email: event.target.value }))} className="w-full border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30" />
+            </div>
+            <div>
+              <label className="mb-1 block text-sm font-medium text-gray-700">Perfil</label>
+              <select value={form.role} onChange={event => setForm(current => ({ ...current, role: event.target.value as AppUser['role'] }))} className="w-full border bg-white px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-brand/30">
+                <option value="member">Usuário</option>
+                <option value="admin">Administrador</option>
+              </select>
+            </div>
+            {error && <p className="text-sm text-red-600" role="alert">{error}</p>}
+            <div className="flex gap-2 pt-1">
+              <Button type="submit" disabled={saving}>{saving ? 'Enviando convite...' : 'Enviar convite'}</Button>
+              <Button type="button" variant="ghost" onClick={() => setInviteOpen(false)}>Cancelar</Button>
+            </div>
+          </form>
+        </Modal>
       )}
     </div>
   )

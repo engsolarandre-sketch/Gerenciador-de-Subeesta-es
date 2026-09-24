@@ -30,6 +30,22 @@ export interface SubstationTypeConfig {
 export interface RequestType {
   id: string; name: string; createdAt: string
 }
+export interface AppUser {
+  id: string
+  name: string
+  email: string
+  role: 'admin' | 'member'
+  active: boolean
+  notifyStageChanges: boolean
+  createdAt: string
+  updatedAt: string
+}
+export interface StageNotificationResult {
+  status: 'sent' | 'partial' | 'failed' | 'skipped'
+  sent: number
+  failed: number
+  message: string
+}
 export interface Stage {
   id: string; templateStageId?: string; stageNumber: number; title: string
   status: StageStatus; macroPhaseId?: string; notes?: string; protocol?: string

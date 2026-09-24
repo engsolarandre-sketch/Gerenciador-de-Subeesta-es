@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   ChevronLeft, Pencil, Trash2, CheckCircle2, Clock,
   AlertCircle, Minus, FileText, History, LayoutList,
-  ChevronDown, ChevronUp, Calendar
+  ChevronDown, ChevronUp, Calendar, Save
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import Badge from '../components/Badge'
@@ -13,6 +13,7 @@ import DocumentsTab from '../components/DocumentsTab'
 import {
   STATUS_LABELS, STAGE_STATUS_LABELS,
   type ProjectStatus, type StageStatus,
+  type Stage,
 } from '../types'
 import clsx from 'clsx'
 
@@ -74,6 +75,10 @@ export default function ProjectDetailPage() {
 
   const [activeTab, setActiveTab]         = useState<Tab>('overview')
   const [expandedStage, setExpandedStage] = useState<string | null>(null)
+  const [stageDrafts, setStageDrafts]     = useState<Record<string, Partial<Stage>>>({})
+  const [savingStageId, setSavingStageId] = useState<string | null>(null)
+  const [advancingStage, setAdvancingStage] = useState(false)
+  const [stageNotice, setStageNotice]     = useState<{ tone: 'success' | 'warning' | 'error'; message: string } | null>(null)
   const [editOpen, setEditOpen]           = useState(false)
   const [editForm, setEditForm]           = useState({
     title: '', substationTypeId: '', transformerKva: '',
@@ -138,6 +143,60 @@ export default function ProjectDetailPage() {
     if (confirm(`Excluir projeto "${project!.title}"?`)) {
       deleteProject(project!.id)
       navigate('/projects')
+    }
+  }
+
+  function changeStageDraft(stage: Stage, data: Partial<Stage>) {
+    setStageDrafts(previous => ({
+      ...previous,
+      [stage.id]: {
+        status: stage.status,
+        protocol: stage.protocol,
+        plannedStartDate: stage.plannedStartDate,
+        plannedEndDate: stage.plannedEndDate,
+        notes: stage.notes,
+        ...previous[stage.id],
+        ...data,
+      },
+    }))
+  }
+
+  async function saveStage(stage: Stage) {
+    const draft = stageDrafts[stage.id]
+    if (!draft) return
+    setSavingStageId(stage.id)
+    setStageNotice(null)
+    try {
+      const notification = await updateProjectStage(project!.id, stage.id, draft)
+      setStageDrafts(previous => {
+        const next = { ...previous }
+        delete next[stage.id]
+        return next
+      })
+      setStageNotice({
+        tone: notification.status === 'sent' ? 'success' : notification.status === 'skipped' ? 'warning' : 'error',
+        message: notification.message,
+      })
+    } catch (error) {
+      setStageNotice({ tone: 'error', message: error instanceof Error ? error.message : 'Não foi possível salvar a etapa.' })
+    } finally {
+      setSavingStageId(null)
+    }
+  }
+
+  async function handleAdvanceStage() {
+    setAdvancingStage(true)
+    setStageNotice(null)
+    try {
+      const notification = await advanceStage(project!.id)
+      setStageNotice({
+        tone: notification.status === 'sent' ? 'success' : notification.status === 'skipped' ? 'warning' : 'error',
+        message: notification.message,
+      })
+    } catch (error) {
+      setStageNotice({ tone: 'error', message: error instanceof Error ? error.message : 'Não foi possível avançar a etapa.' })
+    } finally {
+      setAdvancingStage(false)
     }
   }
 
@@ -367,16 +426,34 @@ export default function ProjectDetailPage() {
               <p className="text-xs text-gray-400 font-medium uppercase tracking-wider">
                 {project.stages.length} etapas · {completedCount} concluídas
               </p>
-              <Button size="sm" variant="ghost" onClick={() => advanceStage(project.id)}>
-                Avançar etapa →
+              <Button size="sm" variant="ghost" onClick={handleAdvanceStage} disabled={advancingStage}>
+                {advancingStage ? 'Avançando...' : 'Avançar etapa →'}
               </Button>
             </div>
+
+            {stageNotice && (
+              <div className={clsx(
+                'mx-6 mt-4 border px-4 py-3 text-sm',
+                stageNotice.tone === 'success' && 'border-emerald-200 bg-emerald-50 text-emerald-800',
+                stageNotice.tone === 'warning' && 'border-amber-200 bg-amber-50 text-amber-800',
+                stageNotice.tone === 'error' && 'border-red-200 bg-red-50 text-red-700',
+              )} role="status">
+                {stageNotice.message}
+              </div>
+            )}
 
             <div className="divide-y">
               {project.stages.map(stage => {
                 const isExpanded = expandedStage === stage.id
                 const isCurrent  = stage.stageNumber === project.currentStage
                 const isSkipped  = stage.status === 'SKIPPED'
+                const draft = stageDrafts[stage.id] ?? {
+                  status: stage.status,
+                  protocol: stage.protocol,
+                  plannedStartDate: stage.plannedStartDate,
+                  plannedEndDate: stage.plannedEndDate,
+                  notes: stage.notes,
+                }
 
                 return (
                   <div key={stage.id} className={clsx(isSkipped && 'opacity-40')}>
@@ -451,8 +528,8 @@ export default function ProjectDetailPage() {
                             Status
                           </label>
                           <select
-                            value={stage.status}
-                            onChange={e => updateProjectStage(project.id, stage.id, { status: e.target.value as StageStatus })}
+                            value={draft.status}
+                            onChange={e => changeStageDraft(stage, { status: e.target.value as StageStatus })}
                             className="border rounded-lg px-3 py-2 text-sm w-full bg-white focus:outline-none focus:ring-2 focus:ring-brand/40"
                           >
                             {STAGE_STATUS_OPTIONS.map(o => (
@@ -466,8 +543,8 @@ export default function ProjectDetailPage() {
                             Protocolo / Referência
                           </label>
                           <input
-                            value={stage.protocol ?? ''}
-                            onChange={e => updateProjectStage(project.id, stage.id, { protocol: e.target.value })}
+                            value={draft.protocol ?? ''}
+                            onChange={e => changeStageDraft(stage, { protocol: e.target.value })}
                             placeholder="Nº do protocolo, referência..."
                             className="border rounded-lg px-3 py-2 text-sm w-full bg-white focus:outline-none focus:ring-2 focus:ring-brand/40"
                           />
@@ -479,8 +556,8 @@ export default function ProjectDetailPage() {
                           </label>
                           <input
                             type="date"
-                            value={toInputDate(stage.plannedStartDate)}
-                            onChange={e => updateProjectStage(project.id, stage.id, {
+                            value={toInputDate(draft.plannedStartDate)}
+                            onChange={e => changeStageDraft(stage, {
                               plannedStartDate: e.target.value ? new Date(e.target.value).toISOString() : undefined,
                             })}
                             className="border rounded-lg px-3 py-2 text-sm w-full bg-white focus:outline-none focus:ring-2 focus:ring-brand/40"
@@ -493,8 +570,8 @@ export default function ProjectDetailPage() {
                           </label>
                           <input
                             type="date"
-                            value={toInputDate(stage.plannedEndDate)}
-                            onChange={e => updateProjectStage(project.id, stage.id, {
+                            value={toInputDate(draft.plannedEndDate)}
+                            onChange={e => changeStageDraft(stage, {
                               plannedEndDate: e.target.value ? new Date(e.target.value).toISOString() : undefined,
                             })}
                             className="border rounded-lg px-3 py-2 text-sm w-full bg-white focus:outline-none focus:ring-2 focus:ring-brand/40"
@@ -524,12 +601,23 @@ export default function ProjectDetailPage() {
                             Observações Técnicas
                           </label>
                           <textarea
-                            value={stage.notes ?? ''}
-                            onChange={e => updateProjectStage(project.id, stage.id, { notes: e.target.value })}
+                            value={draft.notes ?? ''}
+                            onChange={e => changeStageDraft(stage, { notes: e.target.value })}
                             rows={3}
                             placeholder="Registre informações técnicas, pendências, contatos realizados..."
                             className="border rounded-lg px-3 py-2 text-sm w-full resize-none bg-white focus:outline-none focus:ring-2 focus:ring-brand/40"
                           />
+                        </div>
+
+                        <div className="md:col-span-2 flex items-center justify-between gap-4 border-t pt-4">
+                          <p className="text-xs text-gray-500">O salvamento envia uma única notificação com todas as alterações realizadas.</p>
+                          <Button
+                            size="sm"
+                            onClick={() => saveStage(stage)}
+                            disabled={!stageDrafts[stage.id] || savingStageId === stage.id}
+                          >
+                            <Save size={14} /> {savingStageId === stage.id ? 'Salvando...' : 'Salvar alterações'}
+                          </Button>
                         </div>
                       </div>
                     )}
