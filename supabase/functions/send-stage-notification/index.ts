@@ -44,7 +44,7 @@ function escapeHtml(value: unknown) {
 function displayValue(field: string, value: unknown) {
   if (value === null || value === undefined || value === '') return 'Não informado'
   if (field === 'status') return stageStatusLabels[String(value)] ?? String(value)
-  if (field.includes('_date')) {
+  if (field.includes('_date') || field === 'completed_at') {
     return new Intl.DateTimeFormat('pt-BR', { timeZone: 'America/Sao_Paulo' }).format(new Date(String(value)))
   }
   return String(value)
@@ -70,6 +70,22 @@ function emailHtml(options: {
       <td style="padding:12px;border-bottom:1px solid #e5e7eb;color:#64748b;font-size:13px;vertical-align:top">${escapeHtml(change.before)}</td>
       <td style="padding:12px;border-bottom:1px solid #e5e7eb;color:#0f172a;font-size:13px;vertical-align:top">${escapeHtml(change.after)}</td>
     </tr>`).join('')
+  const stageDates = [
+    { label: 'Data de início', value: displayValue('planned_start_date', stage.planned_start_date) },
+    { label: 'Término previsto', value: displayValue('planned_end_date', stage.planned_end_date) },
+    { label: 'Conclusão real', value: displayValue('completed_at', stage.completed_at) },
+  ]
+  const dateRows = stageDates.map(item => `
+    <tr>
+      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#64748b;font-size:12px;font-weight:600">${escapeHtml(item.label)}</td>
+      <td style="padding:10px 12px;border-bottom:1px solid #e5e7eb;color:#0f172a;font-size:13px">${escapeHtml(item.value)}</td>
+    </tr>`).join('')
+  const notes = String(stage.notes ?? '').trim()
+  const notesBlock = notes ? `
+    <div style="margin:0 0 22px">
+      <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:7px">Comentário da atividade</div>
+      <div style="background:#f8fafc;border:1px solid #e5e7eb;padding:13px 14px;color:#334155;font-size:13px;line-height:1.6;white-space:pre-wrap">${escapeHtml(notes)}</div>
+    </div>` : ''
 
   return `<!doctype html>
   <html lang="pt-BR"><body style="margin:0;background:#f1f5f9;font-family:Arial,sans-serif;color:#0f172a">
@@ -85,6 +101,12 @@ function emailHtml(options: {
           <div style="font-size:13px;color:#64748b;margin-top:5px">Cliente: ${escapeHtml(clientName)} · Revendedor: ${escapeHtml(resellerName)}</div>
           <div style="font-size:13px;color:#334155;margin-top:5px">Etapa ${escapeHtml(stage.stage_number)}: ${escapeHtml(stage.title)}</div>
         </div>
+        <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:7px">Datas da atividade</div>
+        <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb;margin-bottom:22px">
+          <tbody>${dateRows}</tbody>
+        </table>
+        ${notesBlock}
+        <div style="font-size:11px;color:#64748b;font-weight:700;text-transform:uppercase;margin-bottom:7px">Alterações registradas</div>
         <table style="width:100%;border-collapse:collapse;border:1px solid #e5e7eb">
           <thead><tr style="background:#f8fafc">
             <th style="padding:10px 12px;text-align:left;font-size:11px;color:#64748b;text-transform:uppercase">Campo</th>
