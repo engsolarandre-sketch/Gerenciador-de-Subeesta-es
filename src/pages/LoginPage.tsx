@@ -14,7 +14,10 @@ export default function LoginPage() {
     event.preventDefault()
     setError('')
     setLoading(true)
-    const { error: signInError } = await supabase.auth.signInWithPassword({ email, password })
+    const { error: signInError } = await supabase.auth.signInWithPassword({
+      email: email.trim().toLowerCase(),
+      password,
+    })
     if (signInError) setError('E-mail ou senha incorretos.')
     setLoading(false)
   }
