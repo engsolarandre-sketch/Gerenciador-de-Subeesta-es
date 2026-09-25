@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import {
   ChevronLeft, Pencil, Trash2, CheckCircle2, Clock,
   AlertCircle, Minus, FileText, History, LayoutList,
-  ChevronDown, ChevronUp, Calendar, Save
+  ChevronDown, ChevronUp, Calendar, Save, MessageCircle
 } from 'lucide-react'
 import { useApp } from '../context/AppContext'
 import Badge from '../components/Badge'
@@ -113,6 +113,26 @@ export default function ProjectDetailPage() {
   const daysLeft = project.plannedEndDate
     ? Math.ceil((new Date(project.plannedEndDate).getTime() - Date.now()) / (1000 * 60 * 60 * 24))
     : null
+
+  function shareStageOnWhatsApp(stage: Stage) {
+    const lines = [
+      '*Atualização de projeto*',
+      '',
+      `*Projeto:* ${project!.title}`,
+      `*Cliente:* ${client?.name ?? 'Não informado'}`,
+      `*Revendedor:* ${reseller?.name ?? 'Não informado'}`,
+      `*Etapa ${stage.stageNumber}:* ${stage.title}`,
+      `*Status:* ${STAGE_STATUS_LABELS[stage.status]}`,
+      `*Data de início:* ${formatDate(stage.plannedStartDate)}`,
+      `*Término previsto:* ${formatDate(stage.plannedEndDate)}`,
+      `*Conclusão real:* ${formatDate(stage.completedAt)}`,
+    ]
+    if (stage.protocol?.trim()) lines.push(`*Protocolo:* ${stage.protocol.trim()}`)
+    if (stage.notes?.trim()) lines.push('', '*Comentário da atividade:*', stage.notes.trim())
+    lines.push('', `*Acompanhar projeto:* ${window.location.origin}/portal/${project!.resellerId}`)
+
+    window.open(`https://wa.me/?text=${encodeURIComponent(lines.join('\n'))}`, '_blank', 'noopener,noreferrer')
+  }
 
   function openEdit() {
     setEditForm({
@@ -609,15 +629,27 @@ export default function ProjectDetailPage() {
                           />
                         </div>
 
-                        <div className="md:col-span-2 flex items-center justify-between gap-4 border-t pt-4">
+                        <div className="md:col-span-2 flex flex-col gap-3 border-t pt-4 sm:flex-row sm:items-center sm:justify-between">
                           <p className="text-xs text-gray-500">O salvamento envia uma única notificação com todas as alterações realizadas.</p>
-                          <Button
-                            size="sm"
-                            onClick={() => saveStage(stage)}
-                            disabled={!stageDrafts[stage.id] || savingStageId === stage.id}
-                          >
-                            <Save size={14} /> {savingStageId === stage.id ? 'Salvando...' : 'Salvar alterações'}
-                          </Button>
+                          <div className="flex flex-wrap items-center justify-end gap-2">
+                            <Button
+                              size="sm"
+                              variant="ghost"
+                              className="text-emerald-700"
+                              onClick={() => shareStageOnWhatsApp(stage)}
+                              disabled={Boolean(stageDrafts[stage.id])}
+                              title={stageDrafts[stage.id] ? 'Salve as alterações antes de compartilhar' : 'Escolher uma conversa ou grupo no WhatsApp'}
+                            >
+                              <MessageCircle size={14} /> Compartilhar no WhatsApp
+                            </Button>
+                            <Button
+                              size="sm"
+                              onClick={() => saveStage(stage)}
+                              disabled={!stageDrafts[stage.id] || savingStageId === stage.id}
+                            >
+                              <Save size={14} /> {savingStageId === stage.id ? 'Salvando...' : 'Salvar alterações'}
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     )}
